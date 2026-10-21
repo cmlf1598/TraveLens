@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Photo } from "@/types/travel";
+import type { PhotoRecord } from "@/types/travel";
 
 /**
  * Development-only sample used when UNSPLASH_ACCESS_KEY is not set (see `isDemoMode`).
@@ -13,8 +13,8 @@ type Seed = [
   width: number,
   height: number,
   color: string,
-  title: string,
-  city: string | null,
+  description: string,
+  cityName: string | null,
   country: string | null,
   tags: string[],
 ];
@@ -52,28 +52,29 @@ const SEEDS: Seed[] = [
   ["1503220317375-aaad61436b1b", 2449, 1633, "#6a7a7a", "Mochilero frente al lago", null, null, ["lagos", "montañas", "aventura"]],
 ];
 
-function imageUrl(id: string, width?: number) {
-  const base = `https://images.unsplash.com/photo-${id}?ixlib=rb-4.1.0&q=80&fm=jpg`;
-  return width ? `${base}&w=${width}&fit=max` : base;
+function imageUrl(id: string, width: number) {
+  return `https://images.unsplash.com/photo-${id}?ixlib=rb-4.1.0&q=80&fm=jpg&w=${width}&fit=max`;
 }
 
-export const DEMO_PHOTOS: Photo[] = SEEDS.map(([id, width, height, color, title, city, country, tags]) => ({
-  id,
-  width,
-  height,
-  color,
-  blurHash: null,
-  alt: title,
-  title,
-  city,
-  country,
-  tags,
-  urls: {
-    thumb: imageUrl(id, 200),
-    small: imageUrl(id, 400),
-    regular: imageUrl(id, 1080),
-    full: imageUrl(id),
-  },
-  photographer: { name: "Unsplash", username: "unsplash", profileUrl: "https://unsplash.com" },
-  unsplashUrl: "https://unsplash.com",
-}));
+export const DEMO_PHOTOS: PhotoRecord[] = SEEDS.map(
+  ([id, width, height, color, description, cityName, country, tags]) => ({
+    id,
+    width,
+    height,
+    color,
+    blurHash: null,
+    alt: description,
+    description,
+    cityName,
+    country,
+    location: [cityName, country].filter(Boolean).join(", ") || null,
+    tags,
+    urls: {
+      thumb: imageUrl(id, 200),
+      small: imageUrl(id, 400),
+      regular: imageUrl(id, 1080),
+    },
+    photographer: { name: "Unsplash", username: "unsplash", profileUrl: "https://unsplash.com" },
+    unsplashUrl: "https://unsplash.com",
+  }),
+);

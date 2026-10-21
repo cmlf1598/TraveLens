@@ -3,7 +3,7 @@ import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { getSimilarPhotos } from "@/services/unsplash";
+import { fetchRelated } from "@/services/unsplash";
 import type { Photo } from "@/types/travel";
 
 /**
@@ -26,7 +26,13 @@ const MOSAIC = "grid h-[36rem] grid-flow-dense grid-cols-2 grid-rows-7 gap-2 lg:
 export async function SimilarMosaic({ photo }: { photo: Photo }) {
   let similar: Photo[];
   try {
-    similar = await getSimilarPhotos(photo, SPANS.length);
+    similar = await fetchRelated(
+      photo.location,
+      photo.tags,
+      photo.id,
+      photo.cityName ?? photo.country,
+      SPANS.length,
+    );
   } catch (err) {
     unstable_rethrow(err);
     similar = [];

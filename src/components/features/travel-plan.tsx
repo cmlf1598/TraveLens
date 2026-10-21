@@ -23,8 +23,8 @@ export async function TravelPlan({ photo }: { photo: Photo }) {
   try {
     plan = await getDestinationInsight({
       photoId: photo.id,
-      title: photo.title,
-      city: photo.city ?? undefined,
+      title: photo.description ?? photo.title,
+      city: photo.cityName ?? undefined,
       country: photo.country ?? undefined,
       tags: photo.tags,
     });

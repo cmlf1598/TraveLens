@@ -5,8 +5,6 @@ import { Button } from "@/components/ui/button";
 import { MasonryGrid } from "@/components/features/masonry-grid";
 import type { Photo, PhotoSearchResult } from "@/types/travel";
 
-const PER_PAGE = 24;
-
 interface PhotoFeedProps {
   query: string;
   initial: PhotoSearchResult;
@@ -34,7 +32,9 @@ export function PhotoFeed({ query, initial }: PhotoFeedProps) {
         observer.disconnect();
         setStatus("loading");
         try {
-          const params = new URLSearchParams({ query, page: String(page + 1), perPage: String(PER_PAGE) });
+          const params = new URLSearchParams({ page: String(page + 1) });
+          if (query) params.set("query", query);
+          else if (initial.seed !== undefined) params.set("seed", String(initial.seed));
           const res = await fetch(`/api/photos?${params}`);
           if (!res.ok) throw new Error(String(res.status));
           const next = (await res.json()) as PhotoSearchResult;
@@ -52,7 +52,7 @@ export function PhotoFeed({ query, initial }: PhotoFeedProps) {
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [query, page, hasMore, status]);
+  }, [query, initial.seed, page, hasMore, status]);
 
   return (
     <>

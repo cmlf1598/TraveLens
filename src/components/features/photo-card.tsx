@@ -8,8 +8,6 @@ interface PhotoCardProps {
 }
 
 export function PhotoCard({ photo, preload = false }: PhotoCardProps) {
-  const place = [photo.city, photo.country].filter(Boolean).join(", ");
-
   return (
     <Link
       href={`/destination/${photo.id}`}
@@ -28,7 +26,7 @@ export function PhotoCard({ photo, preload = false }: PhotoCardProps) {
       />
       <div className="absolute inset-0 flex flex-col justify-end bg-scrim p-4 opacity-0 transition-opacity duration-200 ease-editorial group-hover:opacity-100 group-focus-visible:opacity-100">
         <p className="line-clamp-2 font-display text-lg leading-snug font-medium text-white">{photo.title}</p>
-        {place && <p className="mt-1 text-sm text-white/80">{place}</p>}
+        {photo.subtitle && <p className="mt-1 line-clamp-2 text-sm text-white/80">{photo.subtitle}</p>}
       </div>
     </Link>
   );

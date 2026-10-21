@@ -1,19 +1,21 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 import { toErrorResponse } from "@/lib/errors";
-import { searchPhotos } from "@/services/unsplash";
+import { fetchPopular, searchDestinations } from "@/services/unsplash";
 
-const searchSchema = z.object({
+const paramsSchema = z.object({
   query: z.string().trim().max(100).default(""),
-  page: z.coerce.number().int().min(1).default(1),
-  perPage: z.coerce.number().int().min(1).max(30).default(24),
-  orientation: z.enum(["landscape", "portrait", "squarish"]).optional(),
+  page: z.coerce.number().int().min(1).max(100).default(1),
+  /** Home-feed only: the `seed` returned by the first page, to keep the city order. */
+  seed: z.coerce.number().int().min(0).max(2 ** 32 - 1).optional(),
 });
 
+/** `?query=` searches; without a query it returns the curated home feed. */
 export async function GET(request: NextRequest) {
   try {
-    const params = searchSchema.parse(Object.fromEntries(request.nextUrl.searchParams));
-    return Response.json(await searchPhotos(params));
+    const { query, page, seed } = paramsSchema.parse(Object.fromEntries(request.nextUrl.searchParams));
+    const result = query ? await searchDestinations(query, page) : await fetchPopular({ seed, page });
+    return Response.json(result);
   } catch (err) {
     return toErrorResponse(err);
   }

@@ -6,7 +6,7 @@ import { PhotoFeed } from "@/components/features/photo-feed";
 import { RetryButton } from "@/components/features/retry-button";
 import { SearchBar, SearchBarFallback } from "@/components/features/search-bar";
 import { SiteHeader } from "@/components/features/site-header";
-import { searchPhotos } from "@/services/unsplash";
+import { fetchPopular, searchDestinations } from "@/services/unsplash";
 
 const SUGGESTIONS = ["Kioto", "Dolomitas", "Bali", "Santorini", "Capadocia"];
 
@@ -33,7 +33,7 @@ async function Results({ searchParams }: Pick<PageProps<"/">, "searchParams">) {
 
   let result;
   try {
-    result = await searchPhotos({ query, perPage: 24 });
+    result = query ? await searchDestinations(query) : await fetchPopular();
   } catch (err) {
     unstable_rethrow(err);
     return (
