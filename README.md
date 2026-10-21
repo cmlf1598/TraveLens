@@ -4,6 +4,7 @@ A Pinterest-style travel explorer with AI-generated trip plans. Browse destinati
 
 - **Home** (`/`): a feed of popular cities, or search results for whatever you type.
 - **Destination** (`/destination/[id]`): the photo, an AI travel plan, and a mosaic of similar destinations.
+- **Saved** (`/saved`): the places you saved with the heart button, kept in your browser.
 
 Built with Next.js 16 (App Router, Cache Components), React 19, Tailwind CSS v4, shadcn/ui, the Unsplash API and the Gemini API (`@google/genai`).
 
@@ -37,7 +38,7 @@ Without keys, the app runs in **demo mode**: 30 sample photos and a fixed sample
 | `npm run dev` | Development server. Opening it from another device on your network (e.g. `http://192.168.1.23:3000`) works because `next.config.ts` allows `192.168.1.*`. |
 | `npm run build` / `npm start` | Production build and server (both API keys required). |
 | `npm run lint` | ESLint. |
-| `npm test` | Unit tests for the text-cleaning helpers (Node's built-in test runner). |
+| `npm test` | Unit and component tests (Vitest + Testing Library, jsdom). |
 
 [ARCHITECTURE.md](ARCHITECTURE.md) covers the folder structure, theme tokens and design decisions. Comments marked `REVIEWER_NOTE` in the source explain the trickier sections.
 

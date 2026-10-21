@@ -17,6 +17,7 @@ interface PhotoFeedProps {
  */
 export function PhotoFeed({ query, initial }: PhotoFeedProps) {
   const [photos, setPhotos] = useState<Photo[]>(initial.photos);
+  const [staggerFrom, setStaggerFrom] = useState(0);
   const [page, setPage] = useState(initial.page);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -44,6 +45,7 @@ export function PhotoFeed({ query, initial }: PhotoFeedProps) {
           const res = await fetch(`/api/photos?${params}`);
           if (!res.ok) throw new Error(String(res.status));
           const next = (await res.json()) as PhotoSearchResult;
+          setStaggerFrom(photos.length);
           setPhotos((prev) => {
             const seen = new Set(prev.map((p) => p.id));
             return [...prev, ...next.photos.filter((p) => !seen.has(p.id))];
@@ -58,13 +60,14 @@ export function PhotoFeed({ query, initial }: PhotoFeedProps) {
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [query, initial.seed, page, hasMore, status]);
+  }, [query, initial.seed, page, hasMore, status, photos.length]);
 
   return (
     <>
       <MasonryGrid
         photos={photos}
         eagerCount={initial.photos.length}
+        staggerFrom={staggerFrom}
         placeholders={status === "loading" ? 5 : 0}
       />
       <div ref={sentinelRef} aria-hidden />

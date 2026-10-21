@@ -84,7 +84,12 @@ export function TravelPlanPanel({ destination, context }: TravelPlanRequest) {
             : state.message}
       </p>
 
-      {state.status === "loading" && <TravelPlanSkeleton />}
+      {state.status === "loading" && (
+        <>
+          <PlanGenerating destination={destination} />
+          <TravelPlanSkeleton />
+        </>
+      )}
 
       {state.status === "error" && (
         <Card>
@@ -103,6 +108,63 @@ export function TravelPlanPanel({ destination, context }: TravelPlanRequest) {
 
       {state.status === "success" && <TravelPlanView destination={destination} plan={state.plan} />}
     </div>
+  );
+}
+
+const GENERATING_STEP_MS = 1800;
+
+const generatingSteps = (place: string) => [
+  `Estudiando ${place}…`,
+  "Buscando los rincones imprescindibles…",
+  "Organizando tu itinerario de 3 días…",
+  "Descubriendo una joya escondida…",
+  "Eligiendo la comida local que no te puedes perder…",
+  "Dando los últimos toques…",
+];
+
+/**
+ * Loading banner shown while the AI writes the plan: the steps advance on a timer and stop at the
+ * last one, and the bar fills with them without ever reaching the end.
+ *
+ * REVIEWER_NOTE: The steps are paced by time, not by real progress (the API returns the whole plan
+ * at once). They are `aria-hidden` because a new announcement every 1.8 s would drown out the page
+ * for screen-reader users; the panel's single `role="status"` line already says the plan is coming.
+ */
+function PlanGenerating({ destination }: { destination: string }) {
+  const steps = generatingSteps(destination.split(",")[0].trim());
+  const [step, setStep] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => setStep((s) => Math.min(s + 1, steps.length - 1)), GENERATING_STEP_MS);
+    return () => clearInterval(timer);
+  }, [steps.length]);
+
+  return (
+    <Card className="bg-primary/5 ring-primary/20" data-testid="plan-generating">
+      <CardHeader className="grid-cols-[2.5rem_1fr] items-center gap-x-3">
+        <span className="row-span-2 flex size-10 items-center justify-center rounded-full bg-primary/10">
+          <Sparkles aria-hidden className="size-5 text-primary motion-safe:animate-sparkle" />
+        </span>
+        <CardTitle className="text-base">La IA está creando tu plan perfecto</CardTitle>
+        <CardDescription aria-hidden className="overflow-hidden">
+          <span
+            key={step}
+            className="block truncate motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 duration-300"
+          >
+            {steps[step]}
+          </span>
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div aria-hidden className="relative h-1.5 overflow-hidden rounded-full bg-primary/15">
+          <div
+            className="h-full rounded-full bg-primary transition-[width] duration-700 ease-editorial"
+            style={{ width: `${((step + 1) / (steps.length + 1)) * 100}%` }}
+          />
+          <div className="absolute inset-y-0 left-0 w-2/5 bg-linear-to-r from-transparent via-white/50 to-transparent motion-safe:animate-shimmer" />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

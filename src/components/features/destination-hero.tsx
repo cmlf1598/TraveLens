@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { SaveButton } from "@/components/features/save-button";
 import { Badge } from "@/components/ui/badge";
 import type { Photo } from "@/types/travel";
 
@@ -20,6 +21,7 @@ export function DestinationHero({ photo }: { photo: Photo }) {
           sizes="(min-width: 1024px) 40vw, 100vw"
           className="object-cover"
         />
+        <SaveButton photo={photo} variant="hero" className="absolute top-4 right-4" />
         <div className="absolute inset-x-0 bottom-0 bg-scrim px-6 pt-24 pb-6 sm:px-8 sm:pb-8">
           <h1 className="max-w-[22ch] text-3xl leading-tight font-semibold text-white sm:text-4xl">{photo.title}</h1>
           {photo.tags.length > 0 && (

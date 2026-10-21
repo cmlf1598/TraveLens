@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SavedLink } from "@/components/features/saved-link";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isDemoMode } from "@/lib/env";
@@ -23,7 +24,7 @@ export function SiteHeader({ leading, children }: SiteHeaderProps) {
           </Link>
         </div>
         <div className="min-w-0">{children}</div>
-        <div className="flex justify-end">
+        <div className="flex items-center justify-end gap-2">
           {demo && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -36,6 +37,7 @@ export function SiteHeader({ leading, children }: SiteHeaderProps) {
               </TooltipContent>
             </Tooltip>
           )}
+          <SavedLink />
         </div>
       </div>
     </header>

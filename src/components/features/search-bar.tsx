@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { addRecentSearch } from "@/lib/recent-searches";
 import { cn } from "@/lib/utils";
 
 const DEBOUNCE_MS = 350;
@@ -13,11 +14,13 @@ interface SearchFieldProps {
   value: string;
   onValueChange?: (value: string) => void;
   onClear?: () => void;
+  /** Called when the user finishes a search: Enter, or leaving the field with text in it. */
+  onCommit?: (value: string) => void;
   isPending?: boolean;
   disabled?: boolean;
 }
 
-function SearchField({ value, onValueChange, onClear, isPending, disabled }: SearchFieldProps) {
+function SearchField({ value, onValueChange, onClear, onCommit, isPending, disabled }: SearchFieldProps) {
   return (
     <div role="search" className="relative w-full">
       <Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -25,7 +28,11 @@ function SearchField({ value, onValueChange, onClear, isPending, disabled }: Sea
         type="search"
         value={value}
         onChange={(e) => onValueChange?.(e.target.value)}
-        onKeyDown={(e) => e.key === "Escape" && onClear?.()}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClear?.();
+          else if (e.key === "Enter") onCommit?.(value);
+        }}
+        onBlur={() => onCommit?.(value)}
         disabled={disabled}
         placeholder="Busca una ciudad, un país o un paisaje"
         aria-label="Buscar destinos"
@@ -107,7 +114,13 @@ export function SearchBar() {
 
   return (
     <div className={cn("w-full transition-opacity", isPending && "opacity-90")}>
-      <SearchField value={value} onValueChange={setValue} onClear={() => setValue("")} isPending={isPending} />
+      <SearchField
+        value={value}
+        onValueChange={setValue}
+        onClear={() => setValue("")}
+        onCommit={addRecentSearch}
+        isPending={isPending}
+      />
     </div>
   );
 }

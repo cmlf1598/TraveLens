@@ -2,7 +2,9 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { MasonryGridSkeleton } from "@/components/features/masonry-grid";
+import { MasonryKeyboardNav } from "@/components/features/masonry-keyboard-nav";
 import { PhotoFeed } from "@/components/features/photo-feed";
+import { RecentSearches } from "@/components/features/recent-searches";
 import { RetryButton } from "@/components/features/retry-button";
 import { SearchBar, SearchBarFallback } from "@/components/features/search-bar";
 import { SiteHeader } from "@/components/features/site-header";
@@ -30,6 +32,7 @@ export default function Home({ searchParams }: PageProps<"/">) {
         </Suspense>
       </SiteHeader>
       <main className="mx-auto w-full max-w-[1800px] flex-1 px-3 pt-6 pb-16 sm:px-6">
+        <RecentSearches />
         <Suspense fallback={<MasonryGridSkeleton />}>
           <Results searchParams={searchParams} />
         </Suspense>
@@ -83,7 +86,9 @@ async function Results({ searchParams }: Pick<PageProps<"/">, "searchParams">) {
       </h1>
       {/* REVIEWER_NOTE: `key={query}` makes React discard the feed and build a new one when the
           search changes, which resets its page counter and appended photos in one step. */}
-      <PhotoFeed key={query} query={query} initial={result} />
+      <MasonryKeyboardNav>
+        <PhotoFeed key={query} query={query} initial={result} />
+      </MasonryKeyboardNav>
     </>
   );
 }

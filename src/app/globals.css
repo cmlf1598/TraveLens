@@ -158,6 +158,69 @@
   background-image: var(--scrim);
 }
 
+@keyframes heart-pop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.35);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes heart-ring {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
+@utility animate-heart-pop {
+  animation: heart-pop 450ms var(--ease-editorial);
+}
+
+@utility animate-heart-ring {
+  animation: heart-ring 450ms var(--ease-editorial) forwards;
+}
+
+@keyframes sparkle {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.18) rotate(12deg);
+    opacity: 0.7;
+  }
+}
+
+@keyframes shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@utility animate-sparkle {
+  animation: sparkle 1.6s ease-in-out infinite;
+}
+
+@utility animate-shimmer {
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
