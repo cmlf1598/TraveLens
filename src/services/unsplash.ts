@@ -4,7 +4,15 @@ import { cacheLife } from "next/cache";
 import { connection } from "next/server";
 import { getServerEnv, isDemoMode } from "@/lib/env";
 import { UpstreamError } from "@/lib/errors";
-import { cleanText, foldText, formatTags, slugToText, toDisplayText } from "@/lib/photo-text";
+import {
+  cleanDescription,
+  cleanText,
+  foldText,
+  formatTags,
+  slugToText,
+  toDisplayText,
+  topicLabel,
+} from "@/lib/photo-text";
 import { DEMO_PHOTOS } from "@/services/fixtures/demo-photos";
 import type { Photo, PhotoMode, PhotoRecord, PhotoSearchResult } from "@/types/travel";
 
@@ -53,6 +61,8 @@ const RELATED_LIMIT = 8;
 /** Over-fetch so excluding the current photo and duplicates still leaves enough. */
 const RELATED_FETCH = 12;
 const FALLBACK_TITLE = "Fotografía de viaje";
+/** Photographer descriptions longer than this read as captions, not titles; the Spanish slug wins. */
+const MAX_DESCRIPTION_LENGTH = 100;
 
 // ---------------------------------------------------------------------------
 // Unsplash API shapes and normalization
@@ -72,8 +82,10 @@ interface UnsplashPhoto {
   user: { name: string; username: string; links: { html: string } };
   /** Only on `GET /photos/:id`. */
   location?: { name: string | null; city: string | null; country: string | null };
-  /** Present on `GET /photos/:id`; may be missing from search results. */
+  /** Only on `GET /photos/:id`; search results never include tags. */
   tags?: { title: string }[];
+  /** Present on search results for roughly half the photos, keyed by topic slug. */
+  topic_submissions?: Record<string, { status?: string }>;
 }
 
 interface UnsplashSearchResponse {
@@ -90,11 +102,25 @@ function withUtm(url: string) {
   return `${url}${url.includes("?") ? "&" : "?"}${UTM}`;
 }
 
+/** Tags when Unsplash sends them, otherwise the photo's (non-rejected) topic categories. */
+function toTags(raw: UnsplashPhoto): string[] {
+  const tags = (raw.tags ?? []).map((t) => t.title);
+  if (tags.length) return tags.slice(0, 6);
+  return Object.entries(raw.topic_submissions ?? {})
+    .filter(([, submission]) => submission.status !== "rejected")
+    .map(([slug]) => topicLabel(slug))
+    .slice(0, 6);
+}
+
+function toDescription(raw: UnsplashPhoto): string | null {
+  const own = cleanDescription(raw.description, raw.id);
+  const spanish = slugToText(raw.alternative_slugs?.es, raw.id);
+  if (own && (own.length <= MAX_DESCRIPTION_LENGTH || !spanish)) return own;
+  return spanish ?? own ?? cleanText(raw.alt_description, raw.id);
+}
+
 function toRecord(raw: UnsplashPhoto): PhotoRecord {
-  const description =
-    cleanText(raw.description, raw.id) ??
-    slugToText(raw.alternative_slugs?.es, raw.id) ??
-    cleanText(raw.alt_description, raw.id);
+  const description = toDescription(raw);
   const cityName = cleanText(raw.location?.city, raw.id);
   const country = cleanText(raw.location?.country, raw.id);
   const location =
@@ -111,7 +137,7 @@ function toRecord(raw: UnsplashPhoto): PhotoRecord {
     cityName,
     country,
     location,
-    tags: (raw.tags ?? []).map((t) => t.title).slice(0, 6),
+    tags: toTags(raw),
     urls: { thumb: raw.urls.thumb, small: raw.urls.small, regular: raw.urls.regular },
     photographer: {
       name: raw.user.name,

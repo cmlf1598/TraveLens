@@ -5,14 +5,17 @@ import { BackButton } from "@/components/features/back-button";
 import { DestinationHero } from "@/components/features/destination-hero";
 import { SimilarMosaic, SimilarMosaicSkeleton } from "@/components/features/similar-mosaic";
 import { SiteHeader } from "@/components/features/site-header";
-import { TravelPlan, TravelPlanSkeleton } from "@/components/features/travel-plan";
+import { TravelPlanPanel, TravelPlanSkeleton } from "@/components/features/travel-plan-panel";
 import { getPhoto } from "@/services/unsplash";
 
 const PHOTO_ID = /^[\w-]{1,64}$/;
 
-/** Hero | Plan | Similar. On desktop the row fills the viewport below the header. */
+/**
+ * Hero | Plan | Similar. On desktop the row fills exactly the viewport below the header
+ * (4rem + 1px border); the plan column scrolls on its own.
+ */
 const LAYOUT =
-  "mx-auto grid w-full max-w-[1800px] flex-1 gap-6 px-4 pt-4 pb-10 sm:px-6 lg:h-[calc(100dvh-4rem)] lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(14rem,18rem)] lg:pb-6";
+  "mx-auto grid w-full max-w-[1800px] flex-1 gap-6 px-4 pt-4 pb-10 sm:px-6 lg:h-[calc(100dvh-4rem-1px)] lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(14rem,18rem)] lg:flex-none lg:grid-rows-[minmax(0,1fr)] lg:pb-6";
 
 export default function DestinationPage({ params }: PageProps<"/destination/[id]">) {
   return (
@@ -35,9 +38,16 @@ async function Destination({ params }: Pick<PageProps<"/destination/[id]">, "par
     <main className={LAYOUT}>
       <DestinationHero photo={photo} />
       <section aria-labelledby="plan-heading" className="min-h-0 lg:overflow-y-auto lg:pr-1">
-        <Suspense fallback={<TravelPlanSkeleton />}>
-          <TravelPlan photo={photo} />
-        </Suspense>
+        <TravelPlanPanel
+          key={photo.id}
+          destination={photo.location ?? photo.cityName ?? photo.title}
+          context={{
+            photoId: photo.id,
+            description: photo.description ?? undefined,
+            country: photo.country ?? undefined,
+            tags: photo.tags,
+          }}
+        />
       </section>
       <SimilarSidebar>
         <Suspense fallback={<SimilarMosaicSkeleton />}>

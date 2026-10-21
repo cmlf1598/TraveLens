@@ -53,27 +53,31 @@ export interface PhotoSearchResult {
   seed?: number;
 }
 
-export interface DestinationInsightRequest {
+/** What the photo tells us beyond the destination name; sharpens the generated plan. */
+export interface TravelPlanContext {
   photoId: string;
-  title: string;
-  city?: string;
+  description?: string;
   country?: string;
   tags?: string[];
 }
 
-export interface ItineraryDay {
-  day: number;
-  title: string;
-  description: string;
+export interface TravelPlanRequest {
+  destination: string;
+  context: TravelPlanContext;
 }
 
-export interface DestinationInsight {
-  destination: string;
-  summary: string;
-  bestTimeToVisit: string;
-  highlights: string[];
-  itinerary: ItineraryDay[];
-  travelTips: string[];
+export interface TravelPlanDay {
+  day: number;
+  title: string;
+  activities: string[];
+}
+
+/** AI-generated 3-day plan, shown in the destination page's right panel. */
+export interface TravelPlan {
+  intro: string;
+  days: TravelPlanDay[];
+  hiddenGem: { name: string; description: string };
+  localFood: { dish: string; description: string }[];
 }
 
 export interface ApiError {

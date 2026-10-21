@@ -25,18 +25,18 @@ Unsplash API · Gemini API
 |---|---|
 | `src/app/api/photos/route.ts` | `GET ?query&page` → search; `GET ?seed&page` (no query) → curated home feed. Both return `PhotoSearchResult` |
 | `src/app/api/photos/[id]/download/route.ts` | `POST` → 204; Unsplash download tracking |
-| `src/app/api/insights/route.ts` | `POST {photoId, title, city?, country?, tags?}` → `DestinationInsight` |
+| `src/app/api/ai-plan/route.ts` | `POST { destination, context: { photoId, description?, country?, tags? } }` → `TravelPlan` |
 | `src/app/page.tsx` | Home: sticky header with search, masonry grid of `?q=` results (streams behind a skeleton) |
-| `src/app/destination/[id]/page.tsx` | Detail: hero · AI plan · "Destinos Similares" mosaic; each column streams behind its own skeleton |
+| `src/app/destination/[id]/page.tsx` | Detail: hero · AI plan · "Destinos Similares" mosaic. Photo and mosaic stream from the server; the plan is fetched by the client panel |
 | `src/services/unsplash.ts` | `fetchPopular()`, `searchDestinations()`, `fetchRelated()`, `getPhoto()`, `trackDownload()` (see below) |
 | `src/lib/photo-text.ts` | Pure text cleaning: strip IDs/file names, dedupe place segments, slug → text, tag formatting. Unit-tested (`npm test`) |
-| `src/services/gemini.ts` | `getDestinationInsight()`: `gemini-3.8-flash` via the Interactions API, JSON schema from zod |
+| `src/services/gemini.ts` | `generateTravelPlan(destination, context)`: `gemini-3.5-flash-lite` via `@google/genai` (Interactions API), JSON schema from zod, cached a day per input |
 | `src/services/fixtures/demo-photos.ts` | 30 real Unsplash images, hand-labeled, used only in demo mode |
 | `src/lib/env.ts` | `getServerEnv()` (throws on missing keys), `isDemoMode()` |
 | `src/lib/errors.ts` | `UpstreamError`, `toErrorResponse()` |
-| `src/types/travel.ts` | Shared contracts (`Photo`, `PhotoSearchResult`, `DestinationInsight`, `ApiError`) |
+| `src/types/travel.ts` | Shared contracts (`Photo`, `PhotoSearchResult`, `TravelPlan`, `ApiError`) |
 | `src/components/ui/` | shadcn-generated primitives only; add more with `npx shadcn@latest add <name>` |
-| `src/components/features/` | `SiteHeader`, `SearchBar`, `PhotoFeed` (infinite scroll), `MasonryGrid`, `PhotoCard`, `DestinationHero`, `TravelPlan`, `SimilarMosaic`, `BackButton`, `RetryButton` |
+| `src/components/features/` | `SiteHeader`, `SearchBar`, `PhotoFeed` (infinite scroll), `MasonryGrid`, `PhotoCard`, `DestinationHero`, `TravelPlanPanel`, `SimilarMosaic`, `BackButton`, `RetryButton` |
 
 ## BFF rules
 
@@ -76,7 +76,8 @@ Radius base is `1rem`. Contrast was verified: fg/bg 15.8:1, primary button 4.7:1
 | `fetchRelated(location, tags, excludedId, fallbackCity)` | Primary `location + first 3 tags`; if < 8 usable, secondary `"<fallbackCity> landmark travel"`. Deduped by ID, excludes the current photo, max 8 | `search` (the sidebar shows images only) |
 | `getPhoto(id)` | `GET /photos/:id` (the only endpoint with location and tags) | `search` |
 
-- **Description** = `description` → `alternative_slugs.es` (with its trailing ID removed) → `alt_description`. Every text field goes through `cleanText`, so titles never contain the photo ID or file names (`IMG_1234.JPG`, `DSC_0042`, `P1030456`).
+- **Description** = `description` → `alternative_slugs.es` (with its trailing ID removed) → `alt_description`. The photographer's `description` first loses URLs, @handles, #hashtags and whole clauses that are self-promotion or camera talk (`cleanDescription`); if it is still longer than 100 characters, the Spanish slug wins. Every text field goes through `cleanText`, so titles never contain the photo ID or file names (`IMG_1234.JPG`, `DSC_0042`, `P1030456`).
+- **Tags**: Unsplash only returns tags from `GET /photos/:id`. Search results never include them, so search-mode subtitles fall back to the photo's topic categories (`topic_submissions`, rejected ones excluded). In a live check only about 1 in 4 results had any, so many search tiles have no subtitle.
 - **Location** segments are deduped ("Sydney, Sydney, Australia" → "Sydney, Australia") without touching names like "Bora Bora". `cityName` is kept separately for the related fallback query and the Gemini prompt.
 - Network calls go through two cached helpers: `rawSearch` (1 hour) and `rawPhoto` (1 day). The home feed's randomness lives outside the cache (`connection()` + seed), so each visit gets a new order while each city query stays cached. That matters with the demo key's 50 requests/hour: a cold home page costs 4 requests.
 
@@ -90,14 +91,21 @@ Outside production, a missing `UNSPLASH_ACCESS_KEY` or `GEMINI_API_KEY` switches
 - **Grid:** CSS columns (2 → 5); tiles reserve their aspect ratio and show `urls.small`; title and subtitle appear only on hover or keyboard focus. Further pages load from `/api/photos` as the reader nears the end.
 - **Detail:** the left column shows `urls.regular` with only the title and tags overlaid; the photo credit sits under the image. The similar-destinations mosaic is a fixed 2 × 7 grid (spans 2x2 · 1x1 · 1x2 · 1x1 · 1x2 · 1x1 · 1x1 · 2x1) showing `urls.thumb`, so 8 tiles never scroll.
 
+## AI travel plan
+
+`TravelPlanPanel` (client component, right column) posts to `/api/ai-plan` after the page loads and owns the loading → success / error → retry states; it is keyed by photo ID so navigating between destinations starts fresh, and it aborts its request on unmount. The plan JSON (`intro`, 3 `days` with activities, `hiddenGem`, `localFood`) is rendered as one Card per day, a pine-tinted Card for the hidden gem, and Badges for local dishes.
+
+- SDK: `@google/genai`. The older `@google/generative-ai` is deprecated (support ended 30 Nov 2025, repo archived 16 Dec 2025).
+- Model: `gemini-3.5-flash-lite` (~2–2.5 s). Measured alternatives for the same prompt: `gemini-3-flash-preview` 6–52 s, `gemini-3.8-flash` 10–60 s.
+
 ## Known limitations
 
 - Spanish text from `alternative_slugs.es` has no accents or capitalised proper nouns ("La opera de sidney"), because slugs are ASCII. `alt_description` and tags are English.
-- The live-API path was verified against a mocked Unsplash (realistic payloads, request log), not the real service: field availability in search results (`tags`, `alternative_slugs`) should be confirmed once a key is added.
+- Verified live (2026-10-20): search results include `alternative_slugs` (9 languages) but no `tags`, `location`, `short_description` or `breadcrumbs`.
 - An unknown `/destination/[id]` renders the not-found page with HTTP 200, because the shell has already streamed (expected with Partial Prerendering).
 
 ## Handoff TODO
 
-1. Add real keys to `.env.local` and review live results (titles, related-photo relevance, Gemini plan quality and latency).
+1. Review more live searches for description noise the clause filters miss; extend `PROMO_CLAUSE` / `GEAR_CLAUSE` in `src/lib/photo-text.ts` with a test for each case.
 2. Call `POST /api/photos/[id]/download` when a download or save action is added (Unsplash guideline).
 3. Blur-hash placeholders and keyboard navigation across the grid.

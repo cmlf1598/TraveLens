@@ -56,6 +56,41 @@ export function cleanText(text: string | null | undefined, photoId: string): str
   return out;
 }
 
+const URL_PATTERN = /\bhttps?:\/\/\S+|\bwww\.\S+/gi;
+const HANDLE_OR_HASHTAG = /(^|\s)[@#][\p{L}\p{N}_.]+/gu;
+/** Clauses that address the reader about the photographer rather than describe the place. */
+const PROMO_CLAUSE =
+  /\b(?:follow|sígueme|siguenos|instagram|insta|ig|facebook|tiktok|youtube|twitter|pinterest|behance|portfolio|website|subscribe|patreon|paypal|donat\w*|buy me a coffee|support me|dm me|contact me|check out)\b/i;
+/** Clauses about the camera or editing rather than the scene. */
+const GEAR_CLAUSE =
+  /\b(?:shot (?:on|with)|taken (?:on|with)|i took|camera|lens|\d+\s?mm|f\/\d|iso\s?\d+|sony|canon|nikon|fuji(?:film)?|leica|iphone|pixel \d|dji|mavic|gopro|lightroom|preset)\b/i;
+/** Sentence ends and commas, captured so kept clauses can be rejoined unchanged. */
+const CLAUSE_SEPARATOR = /([.!?;|\n]+\s*|,\s*)/;
+
+/**
+ * Cleans a photographer-written description: drops URLs, @handles and #hashtags,
+ * then removes whole clauses that are self-promotion or camera talk.
+ * "Summers of Lisbon, Please follow me on instagram @x" → "Summers of Lisbon".
+ */
+export function cleanDescription(text: string | null | undefined, photoId: string): string | null {
+  if (!text) return null;
+  const parts = text.replace(URL_PATTERN, " ").replace(HANDLE_OR_HASHTAG, "$1").split(CLAUSE_SEPARATOR);
+  const kept: { clause: string; separator: string }[] = [];
+  for (let i = 0; i < parts.length; i += 2) {
+    const clause = parts[i];
+    if (!clause.trim() || PROMO_CLAUSE.test(clause) || GEAR_CLAUSE.test(clause)) continue;
+    kept.push({ clause, separator: parts[i + 1] ?? "" });
+  }
+  // A separator only survives when another kept clause follows it.
+  const joined = kept.map(({ clause, separator }, i) => clause + (i < kept.length - 1 ? separator : "")).join("");
+  return cleanText(joined, photoId);
+}
+
+/** Unsplash topic slug → label: "street-photography" → "street photography". */
+export function topicLabel(slug: string) {
+  return slug.replace(/[-_]+/g, " ").trim();
+}
+
 /**
  * Turns an Unsplash slug ("vista-de-la-torre-eiffel-Dwu85P9SOIk") into a sentence
  * ("Vista de la torre eiffel"), dropping the trailing photo ID.

@@ -5,75 +5,84 @@ import { cacheLife } from "next/cache";
 import { z } from "zod";
 import { getServerEnv, isDemoMode } from "@/lib/env";
 import { UpstreamError } from "@/lib/errors";
-import type { DestinationInsight, DestinationInsightRequest } from "@/types/travel";
+import type { TravelPlan, TravelPlanContext } from "@/types/travel";
 
-export const GEMINI_MODEL = "gemini-3.8-flash";
+/** Flash-Lite answers in ~2 s; gemini-3.8-flash and gemini-3-flash-preview took 6–60 s for the same plan. */
+export const GEMINI_MODEL = "gemini-3.5-flash-lite";
 
-const insightSchema = z.object({
-  destination: z.string().describe("Nombre del destino, p. ej. «Kioto, Japón»"),
-  summary: z.string().describe("Dos o tres frases sobre por qué visitarlo"),
-  bestTimeToVisit: z.string().describe("Mejor época para ir y el motivo, en una frase"),
-  highlights: z.array(z.string()).min(3).max(5).describe("Lugares o experiencias imprescindibles"),
-  itinerary: z
+const travelPlanSchema = z.object({
+  intro: z.string().describe("Dos o tres frases sobre el carácter del destino y por qué visitarlo"),
+  days: z
     .array(
       z.object({
         day: z.number().int().min(1),
-        title: z.string(),
-        description: z.string().describe("Una o dos frases"),
+        title: z.string().describe("Tema del día, máximo seis palabras"),
+        activities: z.array(z.string()).min(2).max(4).describe("Actividades concretas, una frase cada una"),
       }),
     )
     .min(3)
     .max(3),
-  travelTips: z.array(z.string()).min(2).max(4).describe("Consejos prácticos y concretos"),
+  hiddenGem: z
+    .object({
+      name: z.string().describe("Lugar poco conocido por los turistas"),
+      description: z.string().describe("Por qué merece la visita, en una o dos frases"),
+    })
+    .describe("Una joya escondida"),
+  localFood: z
+    .array(
+      z.object({
+        dish: z.string().describe("Nombre del plato o bebida típica"),
+        description: z.string().describe("Qué es y dónde probarlo, en una frase"),
+      }),
+    )
+    .min(3)
+    .max(4),
 });
 
-const responseSchema = z.toJSONSchema(insightSchema);
+const responseSchema = z.toJSONSchema(travelPlanSchema);
 delete responseSchema.$schema;
 
 const SYSTEM_INSTRUCTION = [
   "Eres un planificador de viajes experto.",
   "Responde siempre en español neutro, con frases breves y concretas.",
-  "Si la foto no identifica un lugar concreto, propón el destino más representativo de lo que muestra.",
+  "Si el destino es vago, elige el lugar más representativo de lo que muestra la foto.",
   "No inventes datos verificables como precios exactos u horarios.",
 ].join(" ");
 
-function buildPrompt({ title, city, country, tags }: DestinationInsightRequest) {
+function buildPrompt(destination: string, { description, country, tags }: TravelPlanContext) {
   return [
-    "Crea un plan de viaje de 3 días inspirado en esta foto.",
-    `Descripción de la foto: ${title}`,
-    city && `Ciudad: ${city}`,
+    `Crea un plan de viaje de 3 días para: ${destination}.`,
     country && `País: ${country}`,
-    tags?.length && `Etiquetas: ${tags.join(", ")}`,
+    description && `La foto que inspira el viaje muestra: ${description}`,
+    tags?.length && `Etiquetas de la foto: ${tags.join(", ")}`,
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-function demoInsight({ title, city, country }: DestinationInsightRequest): DestinationInsight {
-  const place = [city, country].filter(Boolean).join(", ") || title;
+function demoPlan(destination: string): TravelPlan {
   return {
-    destination: place,
-    summary:
-      "Plan de ejemplo generado sin IA. Añade GEMINI_API_KEY a .env.local para obtener un plan real para este destino.",
-    bestTimeToVisit: "Primavera u otoño, cuando el clima es suave y hay menos visitantes.",
-    highlights: ["El centro histórico a primera hora", "Un mirador al atardecer", "Un mercado local"],
-    itinerary: [
-      { day: 1, title: "Llegada y primer paseo", description: "Recorre el barrio principal a pie y cena cerca del alojamiento." },
-      { day: 2, title: "Lo imprescindible", description: "Visita los lugares más conocidos temprano para evitar las colas." },
-      { day: 3, title: "A tu ritmo", description: "Elige una excursión cercana o vuelve a tu rincón favorito." },
+    intro: `Plan de ejemplo para ${destination}, generado sin IA. Añade GEMINI_API_KEY a .env.local para obtener un plan real.`,
+    days: [
+      { day: 1, title: "Llegada y primer paseo", activities: ["Recorre el barrio principal a pie.", "Cena cerca del alojamiento."] },
+      { day: 2, title: "Lo imprescindible", activities: ["Visita los lugares más conocidos a primera hora.", "Reserva la tarde para un mirador."] },
+      { day: 3, title: "A tu ritmo", activities: ["Haz una excursión cercana.", "Vuelve a tu rincón favorito para despedirte."] },
     ],
-    travelTips: ["Reserva con antelación en temporada alta.", "Lleva calzado cómodo para caminar."],
+    hiddenGem: { name: "Un mercado de barrio", description: "Pregunta en tu alojamiento por el mercado donde compran los vecinos." },
+    localFood: [
+      { dish: "Plato del día", description: "Pide el menú del día en una casa de comidas local." },
+      { dish: "Dulce típico", description: "Búscalo en una pastelería tradicional." },
+      { dish: "Bebida local", description: "Pruébala en un bar frecuentado por vecinos." },
+    ],
   };
 }
 
-/** Generate a 3-day travel plan (in Spanish) for the destination shown in a photo. */
-export async function getDestinationInsight(
-  request: DestinationInsightRequest,
-): Promise<DestinationInsight> {
+/** Generate a 3-day travel plan (in Spanish). Cached per destination and context for a day. */
+export async function generateTravelPlan(destination: string, context: TravelPlanContext): Promise<TravelPlan> {
   "use cache";
   cacheLife("days");
 
-  if (isDemoMode("GEMINI_API_KEY")) return demoInsight(request);
+  if (isDemoMode("GEMINI_API_KEY")) return demoPlan(destination);
 
   const client = new GoogleGenAI({ apiKey: getServerEnv("GEMINI_API_KEY") });
   let outputText: string | undefined;
@@ -81,7 +90,7 @@ export async function getDestinationInsight(
     const interaction = await client.interactions.create({
       model: GEMINI_MODEL,
       system_instruction: SYSTEM_INSTRUCTION,
-      input: buildPrompt(request),
+      input: buildPrompt(destination, context),
       response_format: { type: "text", mime_type: "application/json", schema: responseSchema },
       store: false,
     });
@@ -95,7 +104,7 @@ export async function getDestinationInsight(
   try {
     json = JSON.parse(outputText ?? "");
   } catch {}
-  const parsed = insightSchema.safeParse(json);
+  const parsed = travelPlanSchema.safeParse(json);
   if (!parsed.success) throw new UpstreamError("gemini", 502, "Gemini returned an invalid plan");
   return parsed.data;
 }

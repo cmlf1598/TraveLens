@@ -1,6 +1,14 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { cleanText, dedupeSegments, formatTags, slugToText, toDisplayText } from "./photo-text.ts";
+import {
+  cleanDescription,
+  cleanText,
+  dedupeSegments,
+  formatTags,
+  slugToText,
+  toDisplayText,
+  topicLabel,
+} from "./photo-text.ts";
 
 const ID = "Dwu85P9SOIk";
 
@@ -55,6 +63,40 @@ describe("toDisplayText", () => {
     assert.ok(out.length <= 90);
     assert.ok(out.endsWith("…"));
     assert.ok(!out.slice(0, -1).endsWith(" "));
+  });
+});
+
+describe("cleanDescription", () => {
+  // Real descriptions returned by the Unsplash search API.
+  it("drops self-promotion and the handle", () => {
+    assert.equal(
+      cleanDescription("Summers of Lisbon, Please follow me on instagram @_aayush_guptaa_", ID),
+      "Summers of Lisbon",
+    );
+  });
+  it("drops camera talk but keeps the scene", () => {
+    assert.equal(
+      cleanDescription(
+        "Finally we got to visit lisbon! I took my Sony Alpha 6500 with a 50mm to get this shots.",
+        ID,
+      ),
+      "Finally we got to visit lisbon",
+    );
+  });
+  it("removes URLs and hashtags", () => {
+    assert.equal(cleanDescription("Sunrise in Bagan #myanmar https://example.com/me", ID), "Sunrise in Bagan");
+  });
+  it("keeps commas inside a place description", () => {
+    assert.equal(cleanDescription("Elevador da Bica, the classic Lisbon shot", ID), "Elevador da Bica, the classic Lisbon shot");
+  });
+  it("returns null when everything is promotion or gear", () => {
+    assert.equal(cleanDescription("Shot on iPhone 15. Follow @me", ID), null);
+  });
+});
+
+describe("topicLabel", () => {
+  it("turns a slug into words", () => {
+    assert.equal(topicLabel("street-photography"), "street photography");
   });
 });
 
