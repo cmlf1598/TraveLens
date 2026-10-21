@@ -1,48 +1,170 @@
 # TraveLens
 
-A Pinterest-style travel explorer with AI-generated trip plans. Browse destinations as a masonry grid of Unsplash photos, open one, and get a 3-day plan written by Gemini for the place in the picture. The interface is in Spanish.
+A Pinterest-style travel explorer with AI-generated trip plans. Browse destinations as a masonry grid of Unsplash photos, open one, and Gemini writes a 3-day plan for the place in the picture. Save the places you like and come back to them later. The interface is in Spanish.
 
-- **Home** (`/`): a feed of popular cities, or search results for whatever you type.
-- **Destination** (`/destination/[id]`): the photo, an AI travel plan, and a mosaic of similar destinations.
-- **Saved** (`/saved`): the places you saved with the heart button, kept in your browser.
+![TraveLens home feed: a search bar, a "Guardados" link and a four-column masonry grid of travel photos of Paris, Bali, London and Reykjavík](assets/screenshot-landing.png)
 
-Built with Next.js 16 (App Router, Cache Components), React 19, Tailwind CSS v4, shadcn/ui, the Unsplash API and the Gemini API (`@google/genai`).
+Built with Next.js 16 (App Router, Cache Components, Partial Prerendering), React 19, Tailwind CSS v4, shadcn/ui, the Unsplash API and the Gemini API (`@google/genai`).
+
+## Contents
+
+- [App showcase](#app-showcase)
+- [Getting started](#getting-started)
+- [Project architecture](#project-architecture)
+- [How the API connections work](#how-the-api-connections-work)
+- [Testing](#testing)
+- [Role contribution log](#role-contribution-log)
+- [Known limitations](#known-limitations)
+
+## App showcase
+
+![Demo: searching for Santorini, saving photos with the heart, arrow-key navigation, recent-search chips, the AI plan being generated, and the saved places page](assets/travelens-demo.gif)
+
+▶ **Full-quality video:** [assets/travelens-demo.mp4](assets/travelens-demo.mp4) (H.264, 1440×900, 30 fps, 34 s). The GIF above is the same recording, downscaled, because GitHub doesn't play videos stored in the repository inline.
+
+**What the demo shows, in order:**
+
+1. **Home feed:** "Inspiración para tu próximo viaje", a masonry grid of curated cities.
+2. **Search:** typing "Santorini" in *Busca una ciudad, un país o un paisaje*. The results fade in tile by tile.
+3. **Save (Guardar):** hovering two tiles reveals their title and the heart button. Each save plays a heart pop, and the header's *Guardados* count goes up.
+4. **Keyboard navigation:** the arrow keys move focus between tiles by their position on screen.
+5. **Recent searches:** a second search ("Kioto") adds *Búsquedas recientes* chips under the search bar. Clicking the *Santorini* chip goes back to those results.
+6. **Destination page:** opening a photo of Oia shows the "La IA está creando tu plan perfecto" banner while Gemini writes the plan (live call, about 2.5 s). Then the 3-day plan appears and the panel scrolls through it, next to *Destinos Similares*.
+7. **Saved places:** the header's *Guardados* link opens `/saved` with the saved photos.
+
+### Pages
+
+| Route | What it shows |
+|---|---|
+| `/` | A feed of 30 curated cities in a random order per visit, or search results for `?q=…`. Infinite scroll. |
+| `/destination/[id]` | The photo with its tags and credit, the AI travel plan, and a mosaic of 8 similar destinations. |
+| `/saved` | The places saved with the heart button, newest first. Stored in the browser, no account needed. |
+
+### UI/UX features: technical summary
+
+| Area | Implementation |
+|---|---|
+| **Masonry grid** | CSS columns (2 → 5 by breakpoint). Each tile reserves its aspect ratio from the photo's `width`/`height` and shows Unsplash's dominant `color` until the image loads, so nothing jumps. The first page loads eagerly because CSS columns spread the top-of-screen tiles across the whole list. ([`masonry-grid.tsx`](src/components/features/masonry-grid.tsx)) |
+| **Staggered fade-in** | tw-animate-css `animate-in fade-in slide-in-from-bottom-2`, with `animation-delay` = 40 ms per tile, capped at 600 ms. Delays count from the first tile of each newly loaded page (`staggerFrom`), so later pages don't wait the full cap. |
+| **Infinite scroll** | An `IntersectionObserver` on a sentinel 800 px below the grid loads the next page from `/api/photos`. The home feed passes back its `seed`, so page 2 continues the same random city order. ([`photo-feed.tsx`](src/components/features/photo-feed.tsx)) |
+| **Search** | The URL (`?q=`) is the single source of truth, so results can be shared, bookmarked and restored with Back. Input is debounced (350 ms) and written with `router.replace` inside a transition, keeping the old grid visible while the server renders the new one. Escape clears. ([`search-bar.tsx`](src/components/features/search-bar.tsx)) |
+| **Recent searches** | The last 6 queries, deduplicated case-insensitively. A search is recorded on Enter or when the field loses focus, never per keystroke, so partial words aren't saved. Each chip links to `/?q=…` and can be removed; *Borrar* clears them all. ([`recent-searches.tsx`](src/components/features/recent-searches.tsx)) |
+| **Favorites** | `SaveButton` toggles a snapshot of the photo in localStorage (`aria-pressed`, labels *Guardar* / *Quitar de guardados*). It sits beside the tile's link, not inside it, because a button inside a link is invalid HTML. Saving also reports a download to Unsplash, as its guidelines require. ([`save-button.tsx`](src/components/features/save-button.tsx), [`favorites.ts`](src/lib/favorites.ts)) |
+| **Heart pop** | `heart-pop` (scale 1 → 1.35 → 0.9 → 1) and a `heart-ring` burst, 450 ms, defined in [`globals.css`](src/app/globals.css). They play only on unsaved → saved: a click counter is the animated element's `key`, so each save remounts it and replays the animation. |
+| **Saved page** | A static, prerendered shell. The grid renders from localStorage after hydration; until then it shows a skeleton, so the empty state never flashes. The header link shows the saved count. ([`saved-photos.tsx`](src/components/features/saved-photos.tsx)) |
+| **Keyboard navigation** | CSS columns order the DOM column by column, so "next index" is the wrong tile. `findNextTile()` picks the target from the tiles' on-screen rectangles: up/down stay in the column, left/right take the nearest column and the closest vertical centre. One delegated `onKeyDown` serves every tile, including ones added by infinite scroll. Tab order is unchanged. ([`grid-navigation.ts`](src/lib/grid-navigation.ts)) |
+| **AI plan loading** | While Gemini works, a banner says "La IA está creando tu plan perfecto". Status messages advance every 1.8 s, starting with the destination's name, and a progress bar fills with them (shimmer overlay, twinkling sparkles icon). The messages are paced by time: the API returns the whole plan at once. ([`travel-plan-panel.tsx`](src/components/features/travel-plan-panel.tsx)) |
+| **Destination layout** | Three columns that fill exactly the viewport below the header on desktop; the plan column scrolls on its own. The photo renders on the server, the similar-photos mosaic streams in behind its own skeleton, and the plan is fetched by the browser with error and *Reintentar* states. |
+| **Theme** | "Warm editorial": ivory, ink and terracotta oklch tokens, pine as a secondary hue, Fraunces for headings and Inter for text. Measured contrast: 15.8:1 for body text, 4.7:1 for the primary button. |
+| **Accessibility** | Every animation is `motion-safe:` only. Loading states are announced once through a `role="status"` line; the plan's changing messages are `aria-hidden` so screen readers aren't interrupted every 1.8 s. Visible focus rings throughout, and keyboard focus reveals tile titles. |
+
+The screenshot and video were captured with Playwright driving Chrome at a 1440×900 viewport against the development server: the screenshot at 2× device pixel ratio, the video at 2× through the DevTools screencast, encoded to 1440×900. The photos and the AI plan are live API data.
 
 ## Getting started
 
-1. Install dependencies:
+**Requirements:** Node.js 20.9 or later (developed on Node 24) and npm.
+
+1. **Install dependencies:**
 
    ```bash
    npm install
    ```
 
-2. Add your API keys. Copy `.env.example` to `.env.local` and fill in both values:
+2. **Add your API keys.** Copy `.env.example` to `.env.local` and fill in both values:
 
+   ```bash
+   cp .env.example .env.local
    ```
-   UNSPLASH_ACCESS_KEY=...   # https://unsplash.com/oauth/applications → "Access Key"
-   GEMINI_API_KEY=...        # https://aistudio.google.com/apikey
-   ```
 
-   `.env.local` is git-ignored. Never prefix these names with `NEXT_PUBLIC_`: that would ship the keys to the browser.
+   | Variable | Where to get it | Used by | Without it (development only) |
+   |---|---|---|---|
+   | `UNSPLASH_ACCESS_KEY` | [unsplash.com/oauth/applications](https://unsplash.com/oauth/applications): create an app, copy its **Access Key** | `src/services/unsplash.ts` (photos, search, similar destinations) | Demo mode: 30 bundled sample photos |
+   | `GEMINI_API_KEY` | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) | `src/services/gemini.ts` (travel plans) | Demo mode: a fixed sample plan, labelled as not AI-generated |
 
-3. Start the dev server and open <http://localhost:3000>:
+   - `.env.local` is git-ignored.
+   - **Never prefix these names with `NEXT_PUBLIC_`.** That would ship the keys to every visitor's browser. They are read only on the server.
+   - A new Unsplash app is limited to 50 requests per hour. Responses are cached, so normal browsing stays well under it.
+
+3. **Start the development server** and open <http://localhost:3000>:
 
    ```bash
    npm run dev
    ```
 
-Without keys, the app runs in **demo mode**: 30 sample photos and a fixed sample plan, with a "Modo demo" badge in the header. Demo mode never applies to production builds.
+**Demo mode:** if a key is missing in development, that service switches to bundled sample data and the header shows a *Modo demo* badge. Production builds always require both keys.
 
 | Script | What it does |
 |---|---|
-| `npm run dev` | Development server. Opening it from another device on your network (e.g. `http://192.168.1.23:3000`) works because `next.config.ts` allows `192.168.1.*`. |
+| `npm run dev` | Development server on port 3000. Opening it from another device on your network (e.g. `http://192.168.1.23:3000`) works because `next.config.ts` allows `192.168.1.*`. |
 | `npm run build` / `npm start` | Production build and server (both API keys required). |
 | `npm run lint` | ESLint. |
 | `npm test` | Unit and component tests (Vitest + Testing Library, jsdom). |
 
-[ARCHITECTURE.md](ARCHITECTURE.md) covers the folder structure, theme tokens and design decisions. Comments marked `REVIEWER_NOTE` in the source explain the trickier sections.
+## Project architecture
 
----
+TraveLens is one Next.js app. Pages are React Server Components; the interactive parts (search, infinite scroll, favorites, the AI plan) are client components. The two external APIs are reached only from the server, through a small service layer.
+
+```
+Browser (client components)          Server Components (pages)
+   │  fetch('/api/...')                 │  call services directly
+   ▼                                    │
+src/app/api/**/route.ts   (BFF)         │  validate input (zod) → call service → map errors
+   │                                    │
+   ▼                                    ▼
+src/services/*.ts   ('server-only', 'use cache')   ← the only code that reads API keys
+   │
+   ▼
+Unsplash API · Gemini API
+
+Browser-only state: localStorage (saved places, recent searches)
+```
+
+### Folder structure
+
+```
+src/
+├── app/
+│   ├── page.tsx                      Home: curated feed or search results
+│   ├── destination/[id]/             Photo · AI plan · similar destinations (+ error and not-found pages)
+│   ├── saved/page.tsx                Saved places
+│   ├── api/photos/route.ts           GET: search, or the curated feed page by page
+│   ├── api/photos/[id]/download/     POST: Unsplash download tracking
+│   ├── api/ai-plan/route.ts          POST: Gemini travel plan
+│   ├── layout.tsx                    Fonts, metadata, providers
+│   └── globals.css                   Theme tokens and custom animations
+├── components/
+│   ├── features/                     Product components: SearchBar, PhotoFeed, MasonryGrid, PhotoCard,
+│   │                                 SaveButton, TravelPlanPanel, SimilarMosaic, RecentSearches…
+│   └── ui/                           shadcn/ui primitives (generated, not hand-edited)
+├── services/
+│   ├── unsplash.ts                   Unsplash client: feed, search, related photos, photo detail
+│   ├── gemini.ts                     Gemini client: travel plan generation
+│   └── fixtures/demo-photos.ts       Sample data for demo mode
+├── lib/
+│   ├── env.ts · errors.ts            Server env access, error → HTTP mapping
+│   ├── photo-text.ts                 Cleaning Unsplash text (IDs, file names, promo clauses)
+│   ├── local-store.ts                SSR-safe localStorage store (useSyncExternalStore)
+│   ├── favorites.ts · recent-searches.ts
+│   └── grid-navigation.ts            Geometric arrow-key navigation
+├── types/travel.ts                   Shared contracts: Photo, PhotoSearchResult, TravelPlan
+└── test/make-photo.ts                Test fixture
+```
+
+### How each page is rendered
+
+| Route | Rendering | Why |
+|---|---|---|
+| `/` | Partial Prerendering | The header, search box and grid skeleton are prerendered at build time and sent instantly. The results for `?q=` stream in behind a `<Suspense>` boundary. |
+| `/destination/[id]` | Partial Prerendering | The shell is static. The photo is awaited on the server, the similar-photos mosaic streams separately, and the plan is fetched by the browser so the page is interactive before the slowest call finishes. |
+| `/saved` | Static | The list lives in the browser's localStorage, so the server has nothing to render but the shell. |
+| `/api/*` | Dynamic | Request-time route handlers. |
+
+### Key design decisions
+
+- **Backend-for-frontend routes.** The browser only calls TraveLens's own `/api/*` routes. Each validates input with zod, calls a service and maps failures to a safe JSON error: 400 invalid input, 429 rate limit, 502 upstream failure, 504 timeout, 500 unknown.
+- **Caching inside services.** Searches are cached for 1 hour, photo details and AI plans for 1 day, using `'use cache'` with `cacheLife`. Repeat visits cost no API quota.
+- **Unsplash images are hotlinked** from `images.unsplash.com` (`unoptimized` on `next/image`), as Unsplash's API terms require.
+- **Code tour:** comments marked `REVIEWER_NOTE` in the source explain the non-obvious parts. [ARCHITECTURE.md](ARCHITECTURE.md) has the full reference: BFF rules, theme tokens, Unsplash field mapping and handoff notes.
 
 ## How the API connections work
 
@@ -65,7 +187,7 @@ Three things enforce this:
 
 - **Keys are read on the server only.** `getServerEnv()` in [`src/lib/env.ts`](src/lib/env.ts) reads `process.env.UNSPLASH_ACCESS_KEY` / `GEMINI_API_KEY` and throws if one is missing. Next.js only exposes variables prefixed `NEXT_PUBLIC_` to the browser, and these aren't.
 - **The services can't end up in browser code.** Both files start with `import "server-only"`, so the build fails if a client component ever imports them.
-- **The browser goes through "backend for frontend" (BFF) routes.** When the browser needs data after the page has loaded (more photos while scrolling, the AI plan), it calls TravelLens's own routes in `src/app/api/`. Each route validates its input with zod, calls a service, and turns failures into a safe JSON error.
+- **The browser goes through "backend for frontend" (BFF) routes.** When the browser needs data after the page has loaded (more photos while scrolling, the AI plan), it calls TraveLens's own routes in `src/app/api/`. Each route validates its input with zod, calls a service, and turns failures into a safe JSON error.
 
 The two connections are set up differently:
 
@@ -99,7 +221,7 @@ The two connections are set up differently:
 |---|---|---|---|
 | `GET /search/photos` | `query`, `page`, `per_page`, `content_filter=high` | `rawSearch()` → `fetchPopular()`, `searchDestinations()`, `fetchRelated()` | Every list of photos |
 | `GET /photos/:id` | none | `rawPhoto()` → `getPhoto()` | The destination page's photo, with location and tags |
-| `GET /photos/:id/download` | none | `trackDownload()` | Download counting required by Unsplash's guidelines (not wired to the UI yet) |
+| `GET /photos/:id/download` | none | `trackDownload()`, via `POST /api/photos/[id]/download` when a photo is saved | Download counting required by Unsplash's guidelines |
 
 **What each public function sends:**
 
@@ -109,7 +231,7 @@ The two connections are set up differently:
 
 **Both responses are cached.** `rawSearch()` and `rawPhoto()` are marked `"use cache"`, so Next.js stores their results keyed by their arguments: one hour for searches, one day for photo details. Repeat requests cost no Unsplash quota (demo keys allow 50 requests per hour).
 
-**Reading the JSON.** Unsplash returns more fields than the app needs. `toRecord()` maps the raw photo object to TravelLens's own `Photo` type using these paths:
+**Reading the JSON.** Unsplash returns more fields than the app needs. `toRecord()` maps the raw photo object to TraveLens's own `Photo` type using these paths:
 
 | JSON path | Becomes | Notes |
 |---|---|---|
@@ -190,7 +312,7 @@ client.interactions.create(
 
 1. `JSON.parse(output_text)`; if parsing fails, the value becomes `null`.
 2. `travelPlanSchema.safeParse(...)` checks the result against the same zod schema used for the request. Constrained output can still be malformed, so it's validated rather than trusted.
-3. If validation fails, the function throws an `UpstreamError` (502), and the panel shows an error with a Reintentar button instead of crashing.
+3. If validation fails, the function throws an `UpstreamError` (502), and the panel shows an error with a *Reintentar* button instead of crashing.
 
 The validated object (`TravelPlan`) has these paths, each rendered by its own component in [`travel-plan-panel.tsx`](src/components/features/travel-plan-panel.tsx):
 
@@ -247,10 +369,49 @@ How the pieces stay consistent:
 6. **The three panels load independently**, so a slow or failing API never blocks the others:
    - The **photo** is fetched on the server before the page renders, since there's nothing to show without it.
    - **Similar destinations** stream from the server behind their own skeleton.
-   - The **plan** is fetched by the browser after the page is interactive, so it can show a skeleton, an error, and a Reintentar button.
+   - The **plan** is fetched by the browser after the page is interactive, so it can show the "creating your plan" banner, an error, and a *Reintentar* button.
    - If Unsplash's similar-photos search fails, the sidebar says there are none and the plan still loads. If Gemini fails, the photo and mosaic are unaffected.
 
-**Known gaps:**
+## Testing
+
+```bash
+npm test         # Vitest, single run
+npm run lint
+npx tsc --noEmit
+```
+
+The suite covers the pure logic (text cleaning, geometric grid navigation, recent-search ordering, the localStorage store) and the interactive components rendered with Testing Library in jsdom:
+
+- the Save button and its animation rules
+- staggered delays in the grid
+- recent-search chips and how the search bar records searches
+- the saved page and its header link
+- the AI plan's loading banner
+
+Tests sit next to the code they cover (`*.test.ts(x)`); shared fixtures live in `src/test/`.
+
+## Role contribution log
+
+TraveLens was built in stages, each by an AI coding agent working in a defined role, directed and reviewed by Carlos Lopez. Commits are listed in the order they landed.
+
+| Role | Commit | Contribution |
+|---|---|---|
+| **Project setup** | `673a57a` | Created the app with `create-next-app`. |
+| **System Architect** | `0405938` | Defined the architecture: the BFF route layer with zod validation and error mapping, `server-only` services as the only code that reads keys, shared types, the shadcn/ui primitives, the "warm editorial" theme tokens, and the first `ARCHITECTURE.md`. |
+| **Frontend Developer** | `54bfcc5` | Built the UI: sticky header with URL-synced search, masonry grid with infinite scroll, and the `/destination/[id]` page (photo hero, plan panel, similar-destinations mosaic) with streaming skeletons, error and not-found pages. Added demo mode with 30 hand-labelled sample photos. |
+| **Backend Developer** | `ec6e669` | Reworked the Unsplash service: the curated, seeded home feed of 30 cities; search; the two-stage related-photos query; per-function caching. Added text cleaning for descriptions and titles (`photo-text.ts`) with its first unit tests. |
+| **Data Specialist (AI integration)** | `69074a5` | Replaced the placeholder insights endpoint with the Gemini travel plan: the `POST /api/ai-plan` route, a zod schema sent as Gemini's response schema and used again to validate the answer, prompt building from the photo's location and tags, and the client `TravelPlanPanel` with loading, error and retry states. |
+| **QA & Code Reviewer** | `3c5205b` | Reviewed and hardened the code: Unsplash rate-limit detection, Gemini and Unsplash timeouts mapped to 504, the plan column's viewport-fitting layout, LAN access to the dev server (`allowedDevOrigins`), accessibility fixes, and the `REVIEWER_NOTE` comments that explain the non-obvious code. |
+| **API documentation** | `74ab55a` | Wrote the "How the API connections work" guide now in this README. |
+| **UI/UX enhancement** | `028e71e` | Implemented the feature checklist with three parallel sub-agents: favorites with localStorage, the heart pop, the staggered fade-in, arrow-key navigation and recent-search chips. Added the `/saved` page and the "La IA está creando tu plan perfecto" loading banner. Moved the tests to Vitest + Testing Library. |
+| **Automated Media Capture** | `028e71e` | Captured `assets/screenshot-landing.png` and the demo video and GIF with Playwright against the dev server. |
+| **Technical Documentation Specialist** | this commit | Rewrote this README (architecture, setup guide, API explanation, showcase and this log) and removed the unused create-next-app files from `public/`. |
+
+## Known limitations
+
+- Saved places and recent searches live in the browser's localStorage: they don't sync across devices, and if storage is blocked (some private-browsing modes) the heart button does nothing.
+- Saved places keep a snapshot of the photo, so a title that Unsplash changes later isn't updated.
+- An unknown `/destination/[id]` renders the not-found page with HTTP 200, because the page shell has already streamed (expected with Partial Prerendering).
 - A home tile's title is the curated city ("París"), but the destination page uses the photo's own Unsplash location, so a photo without location data falls back to its description.
 - Unsplash place names are usually English, so the plan's heading reads "Lisbon, Portugal" while the plan text is Spanish.
 - Spanish descriptions taken from `alternative_slugs.es` have no accents ("Tranvia amarillo…"), because slugs are ASCII.
