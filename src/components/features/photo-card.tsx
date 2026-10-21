@@ -1,31 +1,35 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { Photo } from "@/types/travel";
 
 interface PhotoCardProps {
   photo: Photo;
-  onSelect: (photo: Photo) => void;
+  preload?: boolean;
 }
 
-export function PhotoCard({ photo, onSelect }: PhotoCardProps) {
+export function PhotoCard({ photo, preload = false }: PhotoCardProps) {
+  const place = [photo.city, photo.country].filter(Boolean).join(", ");
+
   return (
-    <button
-      type="button"
-      onClick={() => onSelect(photo)}
-      className="group relative block w-full overflow-hidden rounded-xl shadow-soft transition-[box-shadow,translate] duration-300 ease-editorial hover:-translate-y-0.5 hover:shadow-lift focus-visible:outline-2 focus-visible:outline-offset-2"
+    <Link
+      href={`/destination/${photo.id}`}
+      className="group relative block overflow-hidden rounded-xl outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring"
       style={{ backgroundColor: photo.color, aspectRatio: `${photo.width} / ${photo.height}` }}
     >
+      {/* Unsplash requires hotlinking, so images bypass the Next.js optimizer. */}
       <Image
         src={photo.urls.small}
         alt={photo.alt}
-        width={photo.width}
-        height={photo.height}
-        sizes="(min-width: 1280px) 20vw, (min-width: 768px) 33vw, 50vw"
-        className="h-full w-full object-cover"
+        width={400}
+        height={Math.round((400 * photo.height) / photo.width)}
+        unoptimized
+        preload={preload}
+        className="size-full object-cover"
       />
-      <span className="absolute inset-0 bg-scrim opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-      <span className="absolute inset-x-3 bottom-3 truncate text-left text-sm text-white opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-        {photo.location ?? photo.photographer.name}
-      </span>
-    </button>
+      <div className="absolute inset-0 flex flex-col justify-end bg-scrim p-4 opacity-0 transition-opacity duration-200 ease-editorial group-hover:opacity-100 group-focus-visible:opacity-100">
+        <p className="line-clamp-2 font-display text-lg leading-snug font-medium text-white">{photo.title}</p>
+        {place && <p className="mt-1 text-sm text-white/80">{place}</p>}
+      </div>
+    </Link>
   );
 }

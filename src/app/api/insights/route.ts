@@ -4,8 +4,10 @@ import { getDestinationInsight } from "@/services/gemini";
 
 const insightSchema = z.object({
   photoId: z.string().regex(/^[\w-]{1,64}$/),
-  description: z.string().trim().min(1).max(500),
-  location: z.string().trim().max(200).optional(),
+  title: z.string().trim().min(1).max(200),
+  city: z.string().trim().max(100).optional(),
+  country: z.string().trim().max(100).optional(),
+  tags: z.array(z.string().trim().max(50)).max(10).optional(),
 });
 
 export async function POST(request: Request) {

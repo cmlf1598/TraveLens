@@ -16,13 +16,13 @@ const fraunces = Fraunces({
 
 export const metadata: Metadata = {
   title: "TraveLens",
-  description: "An AI-native visual explorer for your next journey.",
+  description: "Explora destinos en fotos y recibe un plan de viaje creado con IA.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="en"
+      lang="es"
       className={`${inter.variable} ${fraunces.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">

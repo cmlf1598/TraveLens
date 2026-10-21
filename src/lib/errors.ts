@@ -2,13 +2,6 @@ import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 import type { ApiError } from "@/types/travel";
 
-export class NotImplementedError extends Error {
-  constructor(feature: string) {
-    super(`${feature} is not implemented yet`);
-    this.name = "NotImplementedError";
-  }
-}
-
 export class UpstreamError extends Error {
   constructor(
     readonly service: "unsplash" | "gemini",
@@ -36,9 +29,6 @@ export function toErrorResponse(err: unknown): Response {
       message: "Request validation failed",
       details: z.flattenError(err).fieldErrors,
     });
-  }
-  if (err instanceof NotImplementedError) {
-    return errorJson(501, { error: "not_implemented", message: err.message });
   }
   if (err instanceof UpstreamError) {
     const status = err.status === 429 ? 429 : 502;

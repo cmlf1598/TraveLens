@@ -16,9 +16,12 @@ export interface Photo {
   color: string;
   blurHash: string | null;
   alt: string;
-  description: string | null;
-  location: string | null;
+  title: string;
+  city: string | null;
+  country: string | null;
+  tags: string[];
   urls: {
+    thumb: string;
     small: string;
     regular: string;
     full: string;
@@ -43,17 +46,25 @@ export interface PhotoSearchResult {
 
 export interface DestinationInsightRequest {
   photoId: string;
+  title: string;
+  city?: string;
+  country?: string;
+  tags?: string[];
+}
+
+export interface ItineraryDay {
+  day: number;
+  title: string;
   description: string;
-  location?: string;
 }
 
 export interface DestinationInsight {
-  title: string;
+  destination: string;
   summary: string;
   bestTimeToVisit: string;
   highlights: string[];
+  itinerary: ItineraryDay[];
   travelTips: string[];
-  tags: string[];
 }
 
 export interface ApiError {

@@ -1,36 +1,84 @@
+import { Suspense } from "react";
 import Link from "next/link";
-import { Compass, Search } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Explorer } from "@/components/features/explorer";
+import { unstable_rethrow } from "next/navigation";
+import { MasonryGridSkeleton } from "@/components/features/masonry-grid";
+import { PhotoFeed } from "@/components/features/photo-feed";
+import { RetryButton } from "@/components/features/retry-button";
+import { SearchBar, SearchBarFallback } from "@/components/features/search-bar";
+import { SiteHeader } from "@/components/features/site-header";
+import { searchPhotos } from "@/services/unsplash";
 
-export default function Home() {
+const SUGGESTIONS = ["Kioto", "Dolomitas", "Bali", "Santorini", "Capadocia"];
+
+export default function Home({ searchParams }: PageProps<"/">) {
   return (
-    <div className="mx-auto w-full max-w-[1600px] flex-1 px-4 pb-16 sm:px-8">
-      <header className="flex items-center justify-between py-6">
-        <Link href="/" className="flex items-center gap-2 font-display text-xl font-semibold tracking-tight">
-          <Compass className="size-5 text-primary" />
-          TraveLens
-        </Link>
-      </header>
+    <>
+      <SiteHeader>
+        <Suspense fallback={<SearchBarFallback />}>
+          <SearchBar />
+        </Suspense>
+      </SiteHeader>
+      <main className="mx-auto w-full max-w-[1800px] flex-1 px-3 pt-6 pb-16 sm:px-6">
+        <Suspense fallback={<MasonryGridSkeleton />}>
+          <Results searchParams={searchParams} />
+        </Suspense>
+      </main>
+    </>
+  );
+}
 
-      <section className="mx-auto max-w-2xl py-10 text-center sm:py-16">
-        <p className="mb-3 text-xs font-medium tracking-[0.2em] text-pine uppercase">
-          A visual atlas
-        </p>
-        <h1 className="text-4xl font-semibold sm:text-6xl">
-          Where will the light take you next?
-        </h1>
-        <form className="mx-auto mt-8 flex max-w-md gap-2" role="search">
-          <Input name="query" placeholder="Kyoto, Lofoten, Amalfi…" aria-label="Search destinations" />
-          <Button type="submit">
-            <Search />
-            Explore
-          </Button>
-        </form>
-      </section>
+async function Results({ searchParams }: Pick<PageProps<"/">, "searchParams">) {
+  const { q } = await searchParams;
+  const query = typeof q === "string" ? q.trim() : "";
 
-      <Explorer initialPhotos={[]} />
+  let result;
+  try {
+    result = await searchPhotos({ query, perPage: 24 });
+  } catch (err) {
+    unstable_rethrow(err);
+    return (
+      <StatusMessage title="No se pudieron cargar las fotos">
+        <p>El servicio de imágenes no respondió. Vuelve a intentarlo en unos segundos.</p>
+        <RetryButton />
+      </StatusMessage>
+    );
+  }
+
+  if (result.photos.length === 0) {
+    return (
+      <StatusMessage title={`Sin resultados para «${query}»`}>
+        <p>Prueba con otra ciudad, un país o un tipo de paisaje:</p>
+        <ul className="flex flex-wrap justify-center gap-2">
+          {SUGGESTIONS.map((s) => (
+            <li key={s}>
+              <Link
+                href={`/?q=${encodeURIComponent(s)}`}
+                className="rounded-full border px-3 py-1 text-foreground hover:bg-accent"
+              >
+                {s}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </StatusMessage>
+    );
+  }
+
+  return (
+    <>
+      <h1 className="mb-5 px-1 text-2xl font-semibold sm:text-3xl">
+        {query ? `Fotos de «${query}»` : "Inspiración para tu próximo viaje"}
+      </h1>
+      <PhotoFeed key={query} query={query} initial={result} />
+    </>
+  );
+}
+
+function StatusMessage({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mx-auto flex max-w-md flex-col items-center gap-4 py-24 text-center text-muted-foreground">
+      <h1 className="text-2xl font-semibold text-foreground">{title}</h1>
+      {children}
     </div>
   );
 }

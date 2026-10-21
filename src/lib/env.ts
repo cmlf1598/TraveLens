@@ -9,3 +9,11 @@ export function getServerEnv(key: ServerEnvKey): string {
   }
   return value;
 }
+
+/**
+ * Outside production, a missing key switches that service to bundled demo data
+ * so the UI can be developed without credentials. Production always requires keys.
+ */
+export function isDemoMode(key: ServerEnvKey): boolean {
+  return !process.env[key] && process.env.NODE_ENV !== "production";
+}
