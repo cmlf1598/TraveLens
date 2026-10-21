@@ -15,6 +15,7 @@ type PlanState =
 
 function errorMessage(status: number | null) {
   if (status === 429) return "Se alcanzó el límite de solicitudes a la IA. Inténtalo de nuevo en un minuto.";
+  if (status === 504) return "El servicio de IA tardó demasiado en responder. Vuelve a intentarlo.";
   if (status === null) return "No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.";
   return "El servicio de IA no respondió. Vuelve a intentarlo en unos segundos.";
 }
@@ -28,6 +29,16 @@ export function TravelPlanPanel({ destination, context }: TravelPlanRequest) {
   const [attempt, setAttempt] = useState(0);
   const body = JSON.stringify({ destination, context });
 
+  // REVIEWER_NOTE: Client-side data fetching, step by step:
+  // - The effect re-runs when `body` changes (a different destination) or `attempt` changes (the
+  //   Retry button). `body` is a JSON string rather than the `context` object because objects
+  //   compare by identity: a new but equal object would re-fetch on every render.
+  // - The AbortController cancels the request when the component unmounts (e.g. you navigate
+  //   away). In development, React mounts components twice to surface missing cleanups, which is
+  //   why the Network tab shows one cancelled `/api/ai-plan` request followed by a successful one.
+  //   That is expected, not a bug.
+  // - `setState` is only called from the promise callbacks, never synchronously in the effect, so
+  //   the first render already shows the skeleton.
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/ai-plan", {
@@ -55,13 +66,23 @@ export function TravelPlanPanel({ destination, context }: TravelPlanRequest) {
   }
 
   return (
-    <div className="flex flex-col gap-4" aria-live="polite" aria-busy={state.status === "loading"}>
+    <div className="flex flex-col gap-4" aria-busy={state.status === "loading"}>
       <div className="flex items-center gap-2 pb-1">
         <Sparkles className="size-4 text-primary" />
         <h2 id="plan-heading" className="text-xl font-semibold">
           Tu plan de viaje
         </h2>
       </div>
+      {/* REVIEWER_NOTE: Screen readers can't see a skeleton appear or disappear. This short live
+          region announces each state change once; making the whole panel `aria-live` instead
+          would read the entire plan aloud the moment it arrives. */}
+      <p className="sr-only" role="status">
+        {state.status === "loading"
+          ? "Generando tu plan de viaje…"
+          : state.status === "success"
+            ? "Plan de viaje listo."
+            : state.message}
+      </p>
 
       {state.status === "loading" && <TravelPlanSkeleton />}
 

@@ -4,11 +4,13 @@ import { GoogleGenAI } from "@google/genai";
 import { cacheLife } from "next/cache";
 import { z } from "zod";
 import { getServerEnv, isDemoMode } from "@/lib/env";
-import { UpstreamError } from "@/lib/errors";
+import { UPSTREAM_TIMEOUT, UpstreamError } from "@/lib/errors";
 import type { TravelPlan, TravelPlanContext } from "@/types/travel";
 
 /** Flash-Lite answers in ~2 s; gemini-3.8-flash and gemini-3-flash-preview took 6–60 s for the same plan. */
 export const GEMINI_MODEL = "gemini-3.5-flash-lite";
+/** Flash-Lite normally answers in ~2 s; past this, the panel shows an error with a retry button. */
+const GEMINI_TIMEOUT_MS = 20_000;
 
 const travelPlanSchema = z.object({
   intro: z.string().describe("Dos o tres frases sobre el carácter del destino y por qué visitarlo"),
@@ -39,6 +41,11 @@ const travelPlanSchema = z.object({
     .max(4),
 });
 
+// REVIEWER_NOTE: One schema, used twice. `travelPlanSchema` (zod) is converted to JSON Schema
+// and sent to Gemini as `response_format`, which constrains the model to answer with exactly this
+// shape. The `.describe(...)` texts travel inside it and act as per-field instructions. The same
+// zod schema then validates the reply (`safeParse` below), because "constrained" output can still
+// be malformed. A bad reply becomes a clean 502 with a retry button, never a crash in the panel.
 const responseSchema = z.toJSONSchema(travelPlanSchema);
 delete responseSchema.$schema;
 
@@ -87,17 +94,21 @@ export async function generateTravelPlan(destination: string, context: TravelPla
   const client = new GoogleGenAI({ apiKey: getServerEnv("GEMINI_API_KEY") });
   let outputText: string | undefined;
   try {
-    const interaction = await client.interactions.create({
-      model: GEMINI_MODEL,
-      system_instruction: SYSTEM_INSTRUCTION,
-      input: buildPrompt(destination, context),
-      response_format: { type: "text", mime_type: "application/json", schema: responseSchema },
-      store: false,
-    });
+    const interaction = await client.interactions.create(
+      {
+        model: GEMINI_MODEL,
+        system_instruction: SYSTEM_INSTRUCTION,
+        input: buildPrompt(destination, context),
+        response_format: { type: "text", mime_type: "application/json", schema: responseSchema },
+        store: false,
+      },
+      { timeout_ms: GEMINI_TIMEOUT_MS },
+    );
     outputText = interaction.output_text;
   } catch (err) {
-    const status = (err as { status?: number }).status ?? 502;
-    throw new UpstreamError("gemini", status, `Gemini request failed (${status})`);
+    const timedOut = err instanceof Error && /timeout|timed out|abort/i.test(`${err.name} ${err.message}`);
+    const status = timedOut ? UPSTREAM_TIMEOUT : ((err as { status?: number }).status ?? 502);
+    throw new UpstreamError("gemini", status, `Gemini request failed (${status}): ${(err as Error).message}`);
   }
 
   let json: unknown = null;

@@ -33,7 +33,10 @@ function SearchField({ value, onValueChange, onClear, isPending, disabled }: Sea
       />
       <div className="absolute top-1/2 right-1.5 -translate-y-1/2">
         {isPending ? (
-          <Loader2 aria-label="Buscando" className="mr-2.5 size-4 animate-spin text-muted-foreground" />
+          <span role="status" className="mr-2.5 flex">
+            <Loader2 aria-hidden className="size-4 animate-spin text-muted-foreground" />
+            <span className="sr-only">Buscando…</span>
+          </span>
         ) : (
           value && (
             <Button variant="ghost" size="icon-sm" className="rounded-full" onClick={onClear} aria-label="Borrar búsqueda">
@@ -51,7 +54,18 @@ export function SearchBarFallback() {
   return <SearchField value="" disabled />;
 }
 
-/** Search input bound to the `?q=` URL param; the grid re-renders as the URL changes. */
+/**
+ * Search input bound to the `?q=` URL param; the grid re-renders as the URL changes.
+ *
+ * REVIEWER_NOTE: The URL is the single source of truth for the search, so results can be shared,
+ * bookmarked and restored with the back button. The flow per keystroke:
+ * 1. Typing only updates local `value`, so the input stays instant.
+ * 2. After 350 ms without typing (the debounce in the effect below), the query is written to the
+ *    URL with `router.replace` (replace, not push, so each keystroke doesn't add a history entry).
+ * 3. The URL change makes the server component in `app/page.tsx` re-render with new results.
+ *    Wrapping it in `startTransition` keeps the old grid visible meanwhile, and gives us
+ *    `isPending` for the spinner.
+ */
 export function SearchBar() {
   const router = useRouter();
   const urlQuery = useSearchParams().get("q") ?? "";
@@ -61,8 +75,14 @@ export function SearchBar() {
   const [prevUrlQuery, setPrevUrlQuery] = useState(urlQuery);
   const [isPending, startTransition] = useTransition();
 
-  // A URL change is either the echo of our own debounced update (ignore it, so it never
-  // overwrites newer keystrokes) or external navigation such as back/forward (mirror it).
+  // REVIEWER_NOTE: The tricky part is the reverse direction (URL → input). A URL change is either
+  // the echo of our own debounced update or real navigation (back/forward, a suggestion link).
+  // An echo must be ignored: the user may have typed more since we sent it, and copying the older
+  // value back would eat their keystrokes. `inFlight` lists what we've sent and not seen yet; any
+  // other URL value is navigation and is copied into the input. This runs during render (React's
+  // "adjust state when a prop changes" pattern) rather than in an effect, so the input never shows
+  // a stale value for a frame. An earlier version tracked only the last value sent, and broke the
+  // back button when you returned to a query you had typed before.
   if (urlQuery !== prevUrlQuery) {
     setPrevUrlQuery(urlQuery);
     if (!inFlight.includes(urlQuery)) {

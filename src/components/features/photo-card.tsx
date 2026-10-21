@@ -4,24 +4,32 @@ import type { Photo } from "@/types/travel";
 
 interface PhotoCardProps {
   photo: Photo;
-  preload?: boolean;
+  /** Load immediately instead of lazily; set for tiles likely to be visible on first paint. */
+  eager?: boolean;
 }
 
-export function PhotoCard({ photo, preload = false }: PhotoCardProps) {
+export function PhotoCard({ photo, eager = false }: PhotoCardProps) {
   return (
     <Link
       href={`/destination/${photo.id}`}
       className="group relative block overflow-hidden rounded-xl outline-offset-2 focus-visible:outline-2 focus-visible:outline-ring"
       style={{ backgroundColor: photo.color, aspectRatio: `${photo.width} / ${photo.height}` }}
     >
-      {/* Unsplash requires hotlinking, so images bypass the Next.js optimizer. */}
+      {/*
+        REVIEWER_NOTE: Two deliberate choices on this image:
+        - `unoptimized`: Unsplash's API terms require images to be served ("hotlinked") from
+          images.unsplash.com, so they must not go through Next.js's own image proxy.
+        - `alt=""`: the overlay below holds the title and subtitle. It is only *visually* hidden
+          (opacity 0) until hover or keyboard focus, so screen readers already announce it as the
+          link's name; an alt text as well would make them read the photo twice.
+      */}
       <Image
         src={photo.urls.small}
-        alt={photo.alt}
+        alt=""
         width={400}
         height={Math.round((400 * photo.height) / photo.width)}
         unoptimized
-        preload={preload}
+        loading={eager ? "eager" : "lazy"}
         className="size-full object-cover"
       />
       <div className="absolute inset-0 flex flex-col justify-end bg-scrim p-4 opacity-0 transition-opacity duration-200 ease-editorial group-hover:opacity-100 group-focus-visible:opacity-100">

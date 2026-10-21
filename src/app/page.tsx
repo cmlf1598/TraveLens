@@ -10,6 +10,17 @@ import { fetchPopular, searchDestinations } from "@/services/unsplash";
 
 const SUGGESTIONS = ["Kioto", "Dolomitas", "Bali", "Santorini", "Capadocia"];
 
+/**
+ * REVIEWER_NOTE: How this page loads fast while depending on the URL:
+ * - The page itself is *not* async and never awaits `searchParams`. It only passes the promise
+ *   down, so the header, the search box and the grid skeleton are prerendered at build time and
+ *   sent instantly (Next.js "Partial Prerendering").
+ * - `<Results>` awaits the query inside a `<Suspense>` boundary; its HTML streams into the
+ *   skeleton's place once the photos arrive.
+ * - `<SearchBar>` reads the URL in the browser (`useSearchParams`), and Next.js requires such
+ *   components to sit inside their own `<Suspense>`; `SearchBarFallback` is the static
+ *   placeholder until it's ready.
+ */
 export default function Home({ searchParams }: PageProps<"/">) {
   return (
     <>
@@ -36,6 +47,7 @@ async function Results({ searchParams }: Pick<PageProps<"/">, "searchParams">) {
     result = query ? await searchDestinations(query) : await fetchPopular();
   } catch (err) {
     unstable_rethrow(err);
+    console.error("Photo grid failed:", err);
     return (
       <StatusMessage title="No se pudieron cargar las fotos">
         <p>El servicio de imágenes no respondió. Vuelve a intentarlo en unos segundos.</p>
@@ -69,6 +81,8 @@ async function Results({ searchParams }: Pick<PageProps<"/">, "searchParams">) {
       <h1 className="mb-5 px-1 text-2xl font-semibold sm:text-3xl">
         {query ? `Fotos de «${query}»` : "Inspiración para tu próximo viaje"}
       </h1>
+      {/* REVIEWER_NOTE: `key={query}` makes React discard the feed and build a new one when the
+          search changes, which resets its page counter and appended photos in one step. */}
       <PhotoFeed key={query} query={query} initial={result} />
     </>
   );

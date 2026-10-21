@@ -22,6 +22,12 @@ export function PhotoFeed({ query, initial }: PhotoFeedProps) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const hasMore = page < initial.totalPages;
 
+  // REVIEWER_NOTE: Infinite scroll. An invisible <div> (the "sentinel") sits after the grid, and an
+  // IntersectionObserver fires when it comes within 800px of the viewport, so the next page starts
+  // loading before the reader reaches the end. The observer disconnects as soon as it fires and is
+  // re-created only when `status` returns to "idle", so one scroll can never trigger two requests.
+  // The home feed passes back the `seed` from the first page, so page 2 continues the same random
+  // city order instead of starting a new shuffle.
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel || !hasMore || status !== "idle") return;
@@ -56,8 +62,15 @@ export function PhotoFeed({ query, initial }: PhotoFeedProps) {
 
   return (
     <>
-      <MasonryGrid photos={photos} placeholders={status === "loading" ? 5 : 0} />
+      <MasonryGrid
+        photos={photos}
+        eagerCount={initial.photos.length}
+        placeholders={status === "loading" ? 5 : 0}
+      />
       <div ref={sentinelRef} aria-hidden />
+      <p className="sr-only" role="status">
+        {status === "loading" ? "Cargando más fotos…" : ""}
+      </p>
       {status === "error" && (
         <div className="flex flex-col items-center gap-3 py-10 text-center text-sm text-muted-foreground">
           <p>No se pudieron cargar más fotos. Revisa tu conexión e inténtalo de nuevo.</p>

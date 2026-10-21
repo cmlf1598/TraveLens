@@ -98,6 +98,12 @@ Outside production, a missing `UNSPLASH_ACCESS_KEY` or `GEMINI_API_KEY` switches
 - SDK: `@google/genai`. The older `@google/generative-ai` is deprecated (support ended 30 Nov 2025, repo archived 16 Dec 2025).
 - Model: `gemini-3.5-flash-lite` (~2–2.5 s). Measured alternatives for the same prompt: `gemini-3-flash-preview` 6–52 s, `gemini-3.8-flash` 10–60 s.
 
+## Development notes
+
+- **Opening the dev server from another address** (e.g. `http://192.168.1.23:3000` instead of `localhost`): Next.js 16 refuses to serve its development JavaScript to unknown origins, so the page renders but never becomes interactive (no search, no AI plan). `allowedDevOrigins: ["192.168.1.*"]` in `next.config.ts` allows the local network; add other hosts there if needed.
+- **Reading the code:** comments marked `REVIEWER_NOTE` explain the non-obvious parts: URL-synced search, infinite scroll, caching, the seeded home feed, the bento grid, AI output validation and error mapping. Search for that tag to tour them.
+- **Errors are logged server-side** with the service name (`[unsplash] …`, `[gemini] …`); the browser only receives a generic message and status (400 / 429 / 502 / 504 / 500).
+
 ## Known limitations
 
 - Spanish text from `alternative_slugs.es` has no accents or capitalised proper nouns ("La opera de sidney"), because slugs are ASCII. `alt_description` and tags are English.

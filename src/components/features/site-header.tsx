@@ -27,7 +27,7 @@ export function SiteHeader({ leading, children }: SiteHeaderProps) {
           {demo && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Badge variant="outline" className="hidden cursor-default sm:inline-flex">
+                <Badge variant="outline" tabIndex={0} className="hidden cursor-default sm:inline-flex">
                   Modo demo
                 </Badge>
               </TooltipTrigger>

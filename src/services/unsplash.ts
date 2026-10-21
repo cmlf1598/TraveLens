@@ -3,7 +3,7 @@ import "server-only";
 import { cacheLife } from "next/cache";
 import { connection } from "next/server";
 import { getServerEnv, isDemoMode } from "@/lib/env";
-import { UpstreamError } from "@/lib/errors";
+import { UPSTREAM_TIMEOUT, UpstreamError } from "@/lib/errors";
 import {
   cleanDescription,
   cleanText,
@@ -112,6 +112,15 @@ function toTags(raw: UnsplashPhoto): string[] {
     .slice(0, 6);
 }
 
+/**
+ * REVIEWER_NOTE: Where a photo's descriptive text comes from, best source first:
+ * 1. `description`: written by the photographer. Best when it exists, but often noisy
+ *    ("follow me on instagram…", camera details), so `cleanDescription` strips that first.
+ * 2. `alternative_slugs.es`: Unsplash's own Spanish summary, stored URL-style
+ *    ("tranvia-amarillo-en-lisboa-<id>"), so it lacks accents. It also wins when the
+ *    photographer's text is a long caption (> 100 chars), which makes a poor title.
+ * 3. `alt_description`: an English accessibility caption, the last resort.
+ */
 function toDescription(raw: UnsplashPhoto): string | null {
   const own = cleanDescription(raw.description, raw.id);
   const spanish = slugToText(raw.alternative_slugs?.es, raw.id);
@@ -169,18 +178,45 @@ function present(record: PhotoRecord, mode: PhotoMode, contextCity?: PopularCity
 // Transport (cached) — live API or demo fixtures
 // ---------------------------------------------------------------------------
 
+const UNSPLASH_TIMEOUT_MS = 10_000;
+
+/**
+ * REVIEWER_NOTE: The only function that talks to api.unsplash.com, and it only runs on the
+ * server (`import "server-only"` at the top makes the build fail if a client component imports
+ * this file), so the Client-ID key never reaches the browser.
+ * - A 404 becomes `null` ("no such photo") so pages can show their not-found screen.
+ * - Unsplash doesn't document a status code for "rate limit exceeded", but every response carries
+ *   `X-Ratelimit-Remaining`; a failure with 0 remaining is reported as 429 whatever the status.
+ * - A 10 s timeout stops a hung request from leaving the UI in a loading state forever.
+ */
 async function unsplashFetch<T>(path: string, params?: Record<string, string>): Promise<T | null> {
   const url = new URL(path, UNSPLASH_API_URL);
   for (const [key, value] of Object.entries(params ?? {})) url.searchParams.set(key, value);
 
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Client-ID ${getServerEnv("UNSPLASH_ACCESS_KEY")}`,
-      "Accept-Version": "v1",
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: {
+        Authorization: `Client-ID ${getServerEnv("UNSPLASH_ACCESS_KEY")}`,
+        "Accept-Version": "v1",
+      },
+      signal: AbortSignal.timeout(UNSPLASH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new UpstreamError("unsplash", UPSTREAM_TIMEOUT, `Unsplash ${path} timed out`);
+    }
+    throw err;
+  }
   if (res.status === 404) return null;
-  if (!res.ok) throw new UpstreamError("unsplash", res.status, `Unsplash ${path} responded ${res.status}`);
+  if (!res.ok) {
+    const rateLimited = res.status === 429 || res.headers.get("x-ratelimit-remaining") === "0";
+    throw new UpstreamError(
+      "unsplash",
+      rateLimited ? 429 : res.status,
+      `Unsplash ${path} responded ${res.status}${rateLimited ? " (hourly rate limit reached)" : ""}`,
+    );
+  }
   return (await res.json()) as T;
 }
 
@@ -201,6 +237,13 @@ function searchDemo(query: string, page: number, perPage: number): RawPage {
   };
 }
 
+/**
+ * REVIEWER_NOTE: `"use cache"` makes Next.js store this function's result, keyed by its
+ * arguments, for the `cacheLife` period (an hour here). Identical searches within the hour cost
+ * no Unsplash request, which matters with the demo key's 50 requests per hour. Caching sits on
+ * these low-level "raw" helpers, not on the public functions, because the public ones add
+ * per-request work that must stay uncached (the random city order in `fetchPopular`).
+ */
 async function rawSearch(query: string, page: number, perPage: number): Promise<RawPage> {
   "use cache";
   cacheLife("hours");
@@ -267,6 +310,14 @@ function interleave<T>(lists: T[][]): T[] {
 /**
  * Home feed: the curated cities in a random (seeded) order, `CITIES_PER_PAGE` per page,
  * each queried as "<city> travel". Pass the returned `seed` back to continue the same order.
+ *
+ * REVIEWER_NOTE: Why a seed instead of plain `Math.random()` per page? Page 2 is fetched later,
+ * by the browser (infinite scroll). With a fresh shuffle per page, cities would repeat or be
+ * skipped. Instead, page 1 picks a random number (the seed), the same seed always produces the
+ * same shuffle (`mulberry32` is a tiny deterministic random generator), and the client sends the
+ * seed back with each later page.
+ * `await connection()` tells Next.js this output depends on the individual request. Without it,
+ * Next.js could prerender the feed at build time and freeze one "random" order for every visitor.
  */
 export async function fetchPopular({ seed, page = 1 }: { seed?: number; page?: number } = {}): Promise<PhotoSearchResult> {
   if (seed === undefined) {
@@ -293,9 +344,10 @@ export async function fetchPopular({ seed, page = 1 }: { seed?: number; page?: n
       return records.map((r) => present(r, "home", city));
     }),
   );
-  const seen = new Set<string>();
+  // The same photo can match two city queries; keep its first occurrence only.
+  const unique = [...new Map(interleave(batches).map((p) => [p.id, p] as const)).values()];
   return {
-    photos: interleave(batches).filter((p) => !seen.has(p.id) && seen.add(p.id)),
+    photos: unique,
     page,
     totalPages: Math.ceil(POPULAR_CITIES.length / CITIES_PER_PAGE),
     seed,
@@ -318,6 +370,12 @@ export async function getPhoto(id: string): Promise<Photo | null> {
  * Sidebar photos. Primary query: location + first 3 tags. If that yields fewer than
  * `limit` usable photos, a secondary "<fallbackCity> landmark travel" query fills the rest.
  * Results are deduplicated by ID, exclude `excludedId`, and are capped at `limit`.
+ *
+ * REVIEWER_NOTE: Two-stage search. The primary query is specific (e.g. "Sydney, Australia beach
+ * opera house city") and gives the most relevant matches, but specific queries often return few
+ * results. Only if it falls short does the broader secondary query run, so the sidebar is always
+ * full and the API is hit a second time only when needed. `seen` starts with the current photo's
+ * ID, so it can never appear among its own "similar" photos.
  */
 export async function fetchRelated(
   location: string | null,

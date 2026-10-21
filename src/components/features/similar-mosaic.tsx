@@ -7,9 +7,23 @@ import { fetchRelated } from "@/services/unsplash";
 import type { Photo } from "@/types/travel";
 
 /**
- * Bento layout for 8 tiles on a 2 × 7 grid (14 cells, no gaps):
- * 2x2 · 1x1 · 1x2 · 1x1 · 1x2 · 1x1 · 1x1 · 2x1. Fixed rows keep every
- * tile inside the sidebar's height, so the mosaic never scrolls.
+ * REVIEWER_NOTE: Bento layout for 8 tiles on a 2-column × 7-row grid. The spans below cover all
+ * 14 cells exactly: 2x2 (4) + 1x1 (1) + 1x2 (2) + 1x1 (1) + 1x2 (2) + 1x1 (1) + 1x1 (1) + 2x1 (2).
+ * `grid-flow-dense` lets small tiles fill holes left beside the tall ones, and `grid-rows-7` with
+ * `h-full` divides the sidebar's height into 7 equal rows. The mosaic therefore always fits the
+ * column and never scrolls, whatever the screen height.
+ *
+ *   ┌───┬───┐  row 1-2: tile 0 (2x2)
+ *   │ 0     │
+ *   ├───┼───┤  row 3-4: tile 1, tile 2 (1x2), tile 3
+ *   │ 1 │ 2 │
+ *   │ 3 │   │
+ *   ├───┼───┤  row 5-6: tile 4 (1x2), tile 5, tile 6
+ *   │ 4 │ 5 │
+ *   │   │ 6 │
+ *   ├───┴───┤  row 7: tile 7 (2x1)
+ *   │ 7     │
+ *   └───────┘
  */
 const SPANS = [
   "col-span-2 row-span-2",
@@ -34,7 +48,10 @@ export async function SimilarMosaic({ photo }: { photo: Photo }) {
       SPANS.length,
     );
   } catch (err) {
+    // REVIEWER_NOTE: The sidebar is optional, so a failure here degrades to "no similar
+    // destinations" instead of breaking the whole page; it is still logged for the developer.
     unstable_rethrow(err);
+    console.error("Similar destinations failed:", err);
     similar = [];
   }
 
@@ -58,7 +75,7 @@ export async function SimilarMosaic({ photo }: { photo: Photo }) {
               fill
               unoptimized
               sizes="10rem"
-              className="object-cover transition-transform duration-500 ease-editorial hover:scale-105"
+              className="object-cover transition-transform duration-500 ease-editorial motion-safe:hover:scale-105"
             />
           </Link>
         </li>

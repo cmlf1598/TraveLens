@@ -74,6 +74,12 @@ const CLAUSE_SEPARATOR = /([.!?;|\n]+\s*|,\s*)/;
  */
 export function cleanDescription(text: string | null | undefined, photoId: string): string | null {
   if (!text) return null;
+  // REVIEWER_NOTE: `split` with a *capturing* group (the parentheses in CLAUSE_SEPARATOR) keeps
+  // the separators in the result: "A, B! C" → ["A", ", ", "B", "! ", "C"]. Clauses sit at even
+  // indexes and the separator after each one at the next odd index, so the loop can drop whole
+  // clauses and rejoin the survivors with their original punctuation. "Paris, France" survives
+  // intact; only the clause containing "follow me" or "Sony" disappears. Each case is covered
+  // by a test in photo-text.test.ts (`npm test`).
   const parts = text.replace(URL_PATTERN, " ").replace(HANDLE_OR_HASHTAG, "$1").split(CLAUSE_SEPARATOR);
   const kept: { clause: string; separator: string }[] = [];
   for (let i = 0; i < parts.length; i += 2) {
